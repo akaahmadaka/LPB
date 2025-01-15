@@ -1,169 +1,202 @@
-# Import required modules
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import save_link, get_all_links, increment_clicks, increment_upvotes, increment_downvotes
-from utils.ranking import calculate_link_score
-from utils.helpers import is_valid_group_link
-from datetime import datetime
-from utils.ranking import calculate_link_score
+import logging
+from telebot.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy.exc import SQLAlchemyError
+from database import (
+    get_db_session,
+    get_link_by_id,
+    save_link,
+    get_all_links,
+    get_user_by_id
+)
+# Updated import path to use validation from handlers directory
+from handlers.validation import is_valid_group_link, is_valid_title
+from utils.helpers import rate_limit, format_timestamp
+from models.link_model import Link
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def register_link_handlers(bot):
-    # Handler for /start command
-    @bot.message_handler(commands=["start"])
-    def handle_start(message):
-        bot.reply_to(message, "Welcome! Use /share to submit a link or /get to browse links.")
+    """Register all link-related command handlers."""
+    
+    @bot.message_handler(commands=['add'])
+    @rate_limit(30)
+    def handle_add_link(message: Message):
+        """Handle /add command to add new links."""
+        try:
+            # Check if user exists
+            user = get_user_by_id(message.from_user.id)
+            if not user:
+                bot.reply_to(message, "Please use /start to register first.")
+                return
 
-    # Handler for /share command
-    @bot.message_handler(commands=["share"])
-    def handle_share(message):
-        bot.reply_to(message, "Please send the link and title in the format: Title - URL")
+            # Parse command arguments
+            args = message.text.split(maxsplit=2)
+            if len(args) < 3:
+                bot.reply_to(message, 
+                    "Please use the format: /add <title> <link>\n"
+                    "Example: /add My Group https://t.me/mygroup"
+                )
+                return
 
-    # Handler for link submission
-    @bot.message_handler(func=lambda msg: "-" in msg.text)
-def handle_link_submission(message):
-    try:
-        # Split the message into title and URL
-        title, url = message.text.split(" - ", 1)
-        url = url.strip()
+            title = args[1]
+            url = args[2]
 
-        # Validate the link
-        if not is_valid_group_link(url):
-            bot.reply_to(message, "Invalid link. Please submit a valid Telegram group link.")
-            return
+            # Validate input
+            title_valid, title_error = is_valid_title(title)
+            if not title_valid:
+                bot.reply_to(message, f"Invalid title: {title_error}")
+                return
 
-        # Save the user if they don't already exist
-        user = get_user_by_id(message.from_user.id)
-        if not user:
-            save_user(
-                user_id=message.from_user.id,
-                username=message.from_user.username,
-                first_name=message.from_user.first_name,
-                last_name=message.from_user.last_name
-            )
+            url_valid, url_error = is_valid_group_link(url)
+            if not url_valid:
+                bot.reply_to(message, f"Invalid link: {url_error}")
+                return
 
-        # Save the link to the database with the user ID
-        save_link(title, url, message.from_user.id)
-        bot.reply_to(message, "Link submitted successfully!")
+            # Save link to database
+            with get_db_session() as session:
+                try:
+                    new_link = Link(
+                        title=title,
+                        url=url,
+                        user_id=message.from_user.id
+                    )
+                    session.add(new_link)
+                    session.commit()
 
-    except Exception as e:
-        bot.reply_to(message, "An error occurred. Please use the format: Title - URL")
+                    # Create confirmation message with inline keyboard
+                    keyboard = InlineKeyboardMarkup()
+                    keyboard.row(
+                        InlineKeyboardButton("👍 Upvote", callback_data=f"upvote_{new_link.id}"),
+                        InlineKeyboardButton("👎 Downvote", callback_data=f"downvote_{new_link.id}")
+                    )
+                    keyboard.add(InlineKeyboardButton("🔗 Visit Link", url=new_link.url))
 
-    # Handler for /get command
-    @bot.message_handler(commands=["get"])
-def handle_get_links(message):
-    # Fetch all links from the database
-    links = get_all_links()
+                    bot.reply_to(
+                        message,
+                        f"✅ Link added successfully!\n\n"
+                        f"*Title:* {title}\n"
+                        f"*Link:* {url}\n"
+                        f"*Added by:* @{message.from_user.username or 'Anonymous'}\n"
+                        f"*Time:* {format_timestamp(new_link.created_at)}",
+                        parse_mode="Markdown",
+                        reply_markup=keyboard
+                    )
+                    logger.info(f"New link added: {title} by user {message.from_user.id}")
 
-    # Sort links by score
-    ranked_links = sorted(links, key=lambda x: calculate_link_score(x), reverse=True)
+                except SQLAlchemyError as e:
+                    logger.error(f"Database error while adding link: {str(e)}")
+                    bot.reply_to(message, "Error saving link. Please try again later.")
+                    return
 
-    # Create a list of buttons for the top 10 links
-    keyboard = []
-    for link in ranked_links[:10]:
-        keyboard.append([InlineKeyboardButton(link.title, callback_data=f"link_{link.id}")])
+        except Exception as e:
+            logger.error(f"Error in handle_add_link: {str(e)}")
+            bot.reply_to(message, "An error occurred. Please try again later.")
 
-    # Add a "Next" button for pagination
-    keyboard.append([InlineKeyboardButton("Next ➡️", callback_data="next_page")])
+    @bot.message_handler(commands=['links'])
+    @rate_limit(10)
+    def handle_list_links(message: Message):
+        """Handle /links command to list all links."""
+        try:
+            page = 1
+            per_page = 5
+            
+            # Get all links
+            with get_db_session() as session:
+                links = session.query(Link)\
+                    .filter(Link.is_active == True)\
+                    .order_by(Link.created_at.desc())\
+                    .all()
 
-    # Send the message with the links
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    bot.send_message(message.chat.id, "Here are the links:", reply_markup=reply_markup)
+                if not links:
+                    bot.reply_to(message, "No links found.")
+                    return
 
-    # Handler for link clicks
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("link_"))
-    def handle_link_click(call):
-        # Extract the link ID from the callback data
-        link_id = int(call.data.split("_")[1])
+                # Create message with inline keyboard
+                keyboard = InlineKeyboardMarkup()
+                response = "*📋 Latest Links:*\n\n"
 
-        # Increment the click count for the link
-        increment_clicks(link_id)
+                for i, link in enumerate(links[:per_page], 1):
+                    response += (
+                        f"{i}. *{link.title}*\n"
+                        f"🔗 [{link.url}]({link.url})\n"
+                        f"👍 {link.upvotes} | 👎 {link.downvotes} | 👀 {link.clicks}\n"
+                        f"Added: {format_timestamp(link.created_at)}\n\n"
+                    )
+                    keyboard.add(
+                        InlineKeyboardButton(
+                            f"Visit {link.title[:20]}...", 
+                            url=link.url
+                        )
+                    )
 
-        # Fetch the link details from the database
-        links = get_all_links()
-        link = next((link for link in links if link.id == link_id), None)
+                # Add navigation buttons if needed
+                if len(links) > per_page:
+                    keyboard.row(
+                        InlineKeyboardButton("⬅️ Prev", callback_data=f"links_prev_{page}"),
+                        InlineKeyboardButton("➡️ Next", callback_data=f"links_next_{page}")
+                    )
 
-        if not link:
-            bot.answer_callback_query(call.id, "Link not found.")
-            return
+                bot.reply_to(
+                    message,
+                    response,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard,
+                    disable_web_page_preview=True
+                )
+                logger.info(f"Links list displayed for user {message.from_user.id}")
 
-        # Create a message with the link details and voting buttons
-        message_text = f"{link.title}\nLink: {link.url}\nUpvotes: {link.upvotes} | Downvotes: {link.downvotes}"
-        keyboard = [
-            [InlineKeyboardButton("👍 Upvote", callback_data=f"upvote_{link.id}")],
-            [InlineKeyboardButton("👎 Downvote", callback_data=f"downvote_{link.id}")],
-            [InlineKeyboardButton("🔙 Back", callback_data="back_to_main")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        except Exception as e:
+            logger.error(f"Error in handle_list_links: {str(e)}")
+            bot.reply_to(message, "An error occurred. Please try again later.")
 
-        # Send the message
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=message_text,
-            reply_markup=reply_markup
-        )
+    @bot.callback_query_handler(func=lambda call: call.data.startswith(('upvote_', 'downvote_')))
+    def handle_vote(call):
+        """Handle upvote/downvote callback queries."""
+        try:
+            action, link_id = call.data.split('_')
+            link_id = int(link_id)
 
-    # Handler for upvotes
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("upvote_"))
-    def handle_upvote(call):
-        # Extract the link ID from the callback data
-        link_id = int(call.data.split("_")[1])
+            with get_db_session() as session:
+                link = session.query(Link).get(link_id)
+                if not link:
+                    bot.answer_callback_query(call.id, "Link not found!")
+                    return
 
-        # Increment the upvote count for the link
-        increment_upvotes(link_id)
+                if action == 'upvote':
+                    link.increment_upvotes()
+                    message = "👍 Upvoted!"
+                else:
+                    link.increment_downvotes()
+                    message = "👎 Downvoted!"
 
-        # Fetch the updated link details
-        links = get_all_links()
-        link = next((link for link in links if link.id == link_id), None)
+                session.commit()
+                bot.answer_callback_query(call.id, message)
 
-        if not link:
-            bot.answer_callback_query(call.id, "Link not found.")
-            return
+                # Update message with new vote counts
+                keyboard = InlineKeyboardMarkup()
+                keyboard.row(
+                    InlineKeyboardButton(f"👍 {link.upvotes}", callback_data=f"upvote_{link_id}"),
+                    InlineKeyboardButton(f"👎 {link.downvotes}", callback_data=f"downvote_{link_id}")
+                )
+                keyboard.add(InlineKeyboardButton("🔗 Visit Link", url=link.url))
 
-        # Update the message with the new upvote count
-        message_text = f"{link.title}\nLink: {link.url}\nUpvotes: {link.upvotes} | Downvotes: {link.downvotes}"
-        keyboard = [
-            [InlineKeyboardButton("👍 Upvote", callback_data=f"upvote_{link.id}")],
-            [InlineKeyboardButton("👎 Downvote", callback_data=f"downvote_{link.id}")],
-            [InlineKeyboardButton("🔙 Back", callback_data="back_to_main")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+                bot.edit_message_reply_markup(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    reply_markup=keyboard
+                )
 
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=message_text,
-            reply_markup=reply_markup
-        )
+        except Exception as e:
+            logger.error(f"Error in handle_vote: {str(e)}")
+            bot.answer_callback_query(call.id, "An error occurred. Please try again.")
 
-    # Handler for downvotes
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("downvote_"))
-    def handle_downvote(call):
-        # Extract the link ID from the callback data
-        link_id = int(call.data.split("_")[1])
-
-        # Increment the downvote count for the link
-        increment_downvotes(link_id)
-
-        # Fetch the updated link details
-        links = get_all_links()
-        link = next((link for link in links if link.id == link_id), None)
-
-        if not link:
-            bot.answer_callback_query(call.id, "Link not found.")
-            return
-
-        # Update the message with the new downvote count
-        message_text = f"{link.title}\nLink: {link.url}\nUpvotes: {link.upvotes} | Downvotes: {link.downvotes}"
-        keyboard = [
-            [InlineKeyboardButton("👍 Upvote", callback_data=f"upvote_{link.id}")],
-            [InlineKeyboardButton("👎 Downvote", callback_data=f"downvote_{link.id}")],
-            [InlineKeyboardButton("🔙 Back", callback_data="back_to_main")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=message_text,
-            reply_markup=reply_markup
-        )
+    # Register error handler
+    @bot.error_handler(error_handler=None)
+    def error_handler(error):
+        """Handle errors in message handlers."""
+        logger.error(f"Bot error: {str(error)}")
