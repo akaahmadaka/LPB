@@ -18,6 +18,36 @@ def register_user_handlers(bot):
     Register all user-related command handlers.
     """
     
+    @bot.message_handler(commands=['start'])
+    def handle_start(message):
+        """Handle the /start command."""
+        try:
+            user_id = message.from_user.id
+            user = get_user_by_id(user_id)
+            
+            if not user:
+                # Create new user with only user_id
+                user = save_user(user_id)
+            
+            welcome_message = (
+                f"Welcome! 👋\n\n"
+                "I'm your Link Posting Bot. Here's what I can do:\n"
+                "• /add <title> <link> - Add a new link\n"
+                "• /links - View all shared links\n"
+                "• /profile - View your profile\n"
+                "• /help - Show all available commands"
+            )
+            
+            bot.reply_to(message, welcome_message)
+            logger.info(f"Start command handled for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error in start handler: {str(e)}")
+            bot.reply_to(
+                message,
+                "Sorry, I encountered an error. Please try again later."
+            )
+
     @bot.message_handler(commands=["profile"])
     @rate_limit(30)  # Rate limit: 30 seconds between requests
     def handle_profile(message):
@@ -31,12 +61,7 @@ def register_user_handlers(bot):
             if not user:
                 # Create new user if not exists
                 try:
-                    user = save_user(
-                        user_id=user_id,
-                        username=message.from_user.username,
-                        first_name=message.from_user.first_name,
-                        last_name=message.from_user.last_name
-                    )
+                    user = save_user(user_id)
                     logger.info(f"New user registered: {user_id}")
                 except Exception as e:
                     logger.error(f"Error creating new user: {str(e)}")
@@ -55,8 +80,7 @@ def register_user_handlers(bot):
                 # Create profile message
                 profile_text = (
                     f"👤 *User Profile*\n\n"
-                    f"*Name:* {user.first_name or 'Not set'} {user.last_name or ''}\n"
-                    f"*Username:* @{user.username or 'Not set'}\n"
+                    f"*User ID:* {user.user_id}\n"
                     f"*Role:* {user.role}\n"
                     f"*Member since:* {user.registration_time.strftime('%Y-%m-%d')}\n\n"
                     f"📊 *Statistics*\n"
