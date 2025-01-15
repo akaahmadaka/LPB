@@ -133,14 +133,17 @@ def delete_link(link_id: int) -> bool:
             logger.error(f"Error deleting link: {str(e)}")
             raise
 
-def get_all_links() -> list:
+def get_all_links(session=None):
     """Fetch all links from the database."""
-    with get_db_session() as session:
-        try:
-            return session.query(Link).all()
-        except SQLAlchemyError as e:
-            logger.error(f"Error fetching links: {str(e)}")
-            raise
+    try:
+        if session is None:
+            with get_db_session() as session:
+                return session.query(Link).order_by(Link.submit_date.desc()).all()
+        else:
+            return session.query(Link).order_by(Link.submit_date.desc()).all()
+    except SQLAlchemyError as e:
+        logger.error(f"Error fetching links: {str(e)}")
+        return []
 
 def get_user_by_id(user_id: int) -> User:
     """Fetch a user by their Telegram user ID."""
