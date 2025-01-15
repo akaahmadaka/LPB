@@ -1,8 +1,8 @@
 # Telegram bot token
-BOT_TOKEN = "7671818493:AAFradIXqNYcx7IXwV2dtpK94d4nxzYKVh0"
+BOT_TOKEN = "745433334:ftdtfgfdr0"
 
 # List of admin user IDs
-ADMINS = [5250831809]  # Replace with actual admin user IDs
+ADMINS = [454323566754]  # Replace with actual admin user IDs
 
 # Database connection URI
 DATABASE_URI = "sqlite:///links.db"  # SQLite database file
