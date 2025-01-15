@@ -1,121 +1,163 @@
-# Import required modules
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+import logging
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.exc import SQLAlchemyError
+from contextlib import contextmanager
 from datetime import datetime
-from config import DATABASE_URI
-from models.link_model import Link, Base
-from models.user_model import User
+from models.link_model import Link, Base as LinkBase
+from models.user_model import User, Base as UserBase
 
-# Set up the database connection
-engine = create_engine(DATABASE_URI)
-Session = sessionmaker(bind=engine)
-Base = declarative_base()
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('database.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
-# Define the Link model
-class Link(Base):
-    __tablename__ = "links"
-    id = Column(Integer, primary_key=True)
-    title = Column(String)
-    url = Column(String)
-    clicks = Column(Integer, default=0)
-    upvotes = Column(Integer, default=0)
-    downvotes = Column(Integer, default=0)
-    submission_time = Column(DateTime, default=datetime.now)
+# Database configuration
+DATABASE_URI = 'sqlite:///links.db'
 
-# Create tables in the database
-Base.metadata.create_all(engine)
+# Create engine with SQLite-specific configurations
+engine = create_engine(
+    DATABASE_URI,
+    connect_args={'check_same_thread': False},  # Required for SQLite
+    pool_pre_ping=True  # Connection health checks
+)
+
+# Create session factory
+SessionFactory = sessionmaker(bind=engine)
+Session = scoped_session(SessionFactory)
+
+@contextmanager
+def get_db_session():
+    """
+    Context manager for database sessions.
+    Ensures proper handling of sessions including rollback on errors.
+    """
+    session = Session()
+    try:
+        yield session
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Database error: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+# SQLite specific optimizations
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Set SQLite pragmas for better performance."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging
+    cursor.execute("PRAGMA synchronous=NORMAL")  # Faster synchronization
+    cursor.execute("PRAGMA temp_store=MEMORY")  # Store temp tables in memory
+    cursor.execute("PRAGMA cache_size=-2000")  # Use 2MB of memory for cache
+    cursor.close()
+
+def init_db():
+    """Initialize the database by creating all tables."""
+    try:
+        # Create tables
+        LinkBase.metadata.create_all(engine)
+        UserBase.metadata.create_all(engine)
+        logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Error initializing database: {str(e)}")
+        raise
 
 # Database operations
-def save_link(title, url):
-    """
-    Save a new link to the database.
-    """
-    session = Session()
-    link = Link(title=title, url=url)
-    session.add(link)
-    session.commit()
-    session.close()
+def save_link(title: str, url: str, user_id: int) -> Link:
+    """Save a new link to the database."""
+    with get_db_session() as session:
+        try:
+            link = Link(
+                title=title,
+                url=url,
+                user_id=user_id,
+                submission_time=datetime.utcnow()
+            )
+            session.add(link)
+            logger.info(f"Link saved successfully: {title}")
+            return link
+        except SQLAlchemyError as e:
+            logger.error(f"Error saving link: {str(e)}")
+            raise
 
-def delete_link(link_id):
-    """
-    Delete a link from the database by its ID.
-    """
-    session = Session()
-    link = session.query(Link).filter_by(id=link_id).first()
-    if link:
-        session.delete(link)
-        session.commit()
-    session.close()
+def delete_link(link_id: int) -> bool:
+    """Delete a link from the database."""
+    with get_db_session() as session:
+        try:
+            link = session.query(Link).filter_by(id=link_id).first()
+            if link:
+                session.delete(link)
+                logger.info(f"Link {link_id} deleted successfully")
+                return True
+            logger.warning(f"Link {link_id} not found")
+            return False
+        except SQLAlchemyError as e:
+            logger.error(f"Error deleting link: {str(e)}")
+            raise
 
-def get_all_links():
-    """
-    Fetch all links from the database.
-    """
-    session = Session()
-    links = session.query(Link).all()
-    session.close()
-    return links
+def get_all_links() -> list:
+    """Fetch all links from the database."""
+    with get_db_session() as session:
+        try:
+            return session.query(Link).all()
+        except SQLAlchemyError as e:
+            logger.error(f"Error fetching links: {str(e)}")
+            raise
 
-def increment_clicks(link_id):
-    """
-    Increment the click count for a link.
-    """
-    session = Session()
-    link = session.query(Link).filter_by(id=link_id).first()
-    if link:
-        link.clicks += 1
-        session.commit()
-    session.close()
+def get_user_by_id(user_id: int) -> User:
+    """Fetch a user by their Telegram user ID."""
+    with get_db_session() as session:
+        try:
+            return session.query(User).filter_by(user_id=user_id).first()
+        except SQLAlchemyError as e:
+            logger.error(f"Error fetching user: {str(e)}")
+            raise
 
-def increment_upvotes(link_id):
-    """
-    Increment the upvote count for a link.
-    """
-    session = Session()
-    link = session.query(Link).filter_by(id=link_id).first()
-    if link:
-        link.upvotes += 1
-        session.commit()
-    session.close()
+def save_user(user_id: int, username: str = None, 
+              first_name: str = None, last_name: str = None) -> User:
+    """Save a new user to the database."""
+    with get_db_session() as session:
+        try:
+            user = User(
+                user_id=user_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name
+            )
+            session.add(user)
+            logger.info(f"User saved successfully: {username}")
+            return user
+        except SQLAlchemyError as e:
+            logger.error(f"Error saving user: {str(e)}")
+            raise
 
-def increment_downvotes(link_id):
-    """
-    Increment the downvote count for a link.
-    """
-    session = Session()
-    link = session.query(Link).filter_by(id=link_id).first()
-    if link:
-        link.downvotes += 1
-        session.commit()
-    session.close()
+def get_link_by_id(link_id: int) -> Link:
+    """Get a link by its ID."""
+    with get_db_session() as session:
+        try:
+            return session.query(Link).get(link_id)
+        except SQLAlchemyError as e:
+            logger.error(f"Error getting link by ID: {str(e)}")
+            raise
 
-def save_user(user_id, username, first_name, last_name, role="user"):
-    """
-    Save a new user to the database.
-    """
-    session = Session()
-    user = User(user_id=user_id, username=username, first_name=first_name, last_name=last_name, role=role)
-    session.add(user)
-    session.commit()
-    session.close()
+def check_database_connection() -> bool:
+    """Check if the database connection is working."""
+    try:
+        with get_db_session() as session:
+            session.execute("SELECT 1")
+        return True
+    except SQLAlchemyError as e:
+        logger.error(f"Database connection check failed: {str(e)}")
+        return False
 
-def get_user_by_id(user_id):
-    """
-    Fetch a user by their Telegram user ID.
-    """
-    session = Session()
-    user = session.query(User).filter_by(user_id=user_id).first()
-    session.close()
-    return user
-
-def update_user_role(user_id, role):
-    """
-    Update a user's role (e.g., promote to admin).
-    """
-    session = Session()
-    user = session.query(User).filter_by(user_id=user_id).first()
-    if user:
-        user.role = role
-        session.commit()
-    session.close()
+# Initialize database when the module is imported
+init_db()
