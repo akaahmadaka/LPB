@@ -1,6 +1,6 @@
 import os
 import logging
-from telebot import TeleBot
+import telebot
 from config import BOT_TOKEN
 from handlers.link_handlers import register_link_handlers
 from handlers.admin_handlers import register_admin_handlers
@@ -17,30 +17,41 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize the bot
-bot = TeleBot(BOT_TOKEN)
-
-def setup_handlers():
-    """
-    Set up all message handlers for the bot.
-    """
+def create_bot():
+    """Create and configure the bot instance."""
     try:
+        if not BOT_TOKEN:
+            raise ValueError("Bot token not found in configuration")
+        return telebot.TeleBot(BOT_TOKEN, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error creating bot: {str(e)}")
+        raise
+
+def setup_handlers(bot):
+    """Set up all message handlers for the bot."""
+    try:
+        # Register handlers and check for successful registration
+        if not bot:
+            raise ValueError("Bot instance is None")
+
         # Register handlers
         register_link_handlers(bot)
         register_admin_handlers(bot)
         register_user_handlers(bot)
+
         logger.info("All handlers registered successfully")
     except Exception as e:
         logger.error(f"Error setting up handlers: {str(e)}")
         raise
 
 def main():
-    """
-    Main function to run the bot.
-    """
+    """Main function to run the bot."""
     try:
+        # Create bot instance
+        bot = create_bot()
+        
         # Setup handlers
-        setup_handlers()
+        setup_handlers(bot)
         
         # Log bot information
         bot_info = bot.get_me()
@@ -48,11 +59,15 @@ def main():
         
         # Start the bot
         logger.info("Bot is running...")
-        bot.polling(none_stop=True, timeout=60)
+        bot.infinity_polling(timeout=60, long_polling_timeout=60)
     except Exception as e:
         logger.error(f"Bot crashed: {str(e)}")
         raise
 
-# Start the bot
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {str(e)}")

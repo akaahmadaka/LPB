@@ -8,7 +8,6 @@ from database import (
     get_all_links,
     get_user_by_id
 )
-# Updated import path to use validation from handlers directory
 from handlers.validation import is_valid_group_link, is_valid_title
 from utils.helpers import rate_limit, format_timestamp
 from models.link_model import Link
@@ -195,8 +194,9 @@ def register_link_handlers(bot):
             logger.error(f"Error in handle_vote: {str(e)}")
             bot.answer_callback_query(call.id, "An error occurred. Please try again.")
 
-    # Register error handler
-    @bot.error_handler(error_handler=None)
-    def error_handler(error):
-        """Handle errors in message handlers."""
-        logger.error(f"Bot error: {str(error)}")
+    # Register global error handler
+    @bot.exception_handler()
+    def handle_exceptions(exception):
+        """Handle all exceptions globally."""
+        logger.error(f"Global error handler caught an exception: {str(exception)}")
+        # Optionally, you can send a message to the user or log the error in more detail

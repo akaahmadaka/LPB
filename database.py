@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
 from datetime import datetime
 from models.link_model import Link, Base as LinkBase
-from models.user_model import User, Base as UserBase
+from models.user_model import User, Base as UserBase, UserRole
 
 # Set up logging
 logging.basicConfig(
@@ -71,7 +71,36 @@ def init_db():
         logger.error(f"Error initializing database: {str(e)}")
         raise
 
-# Database operations
+def update_user_role(user_id: int, new_role: str) -> bool:
+    """
+    Update a user's role in the database.
+    
+    Args:
+        user_id (int): The Telegram user ID
+        new_role (str): The new role to assign
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    with get_db_session() as session:
+        try:
+            user = session.query(User).filter_by(user_id=user_id).first()
+            if user:
+                # Validate the role
+                if new_role in [role.value for role in UserRole]:
+                    user.role = new_role
+                    user.updated_at = datetime.utcnow()
+                    logger.info(f"Updated role for user {user_id} to {new_role}")
+                    return True
+                else:
+                    logger.warning(f"Invalid role attempted: {new_role}")
+                    return False
+            logger.warning(f"User {user_id} not found for role update")
+            return False
+        except SQLAlchemyError as e:
+            logger.error(f"Error updating user role: {str(e)}")
+            raise
+
 def save_link(title: str, url: str, user_id: int) -> Link:
     """Save a new link to the database."""
     with get_db_session() as session:
