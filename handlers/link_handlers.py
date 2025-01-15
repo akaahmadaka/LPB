@@ -1,5 +1,5 @@
 from telebot.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from database import get_db_session, get_link_by_id
+from database import get_db_session, get_link_by_id, get_all_links
 import logging
 from sqlalchemy.exc import SQLAlchemyError
 from utils.helpers import format_timestamp
@@ -16,6 +16,7 @@ def register_link_handlers(bot):
             # Extract link_id
             _, _, link_id = call.data.split('_')
             link_id = int(link_id)
+            voter_id = call.from_user.id
             
             with get_db_session() as session:
                 link = get_link_by_id(link_id, session)
@@ -24,26 +25,42 @@ def register_link_handlers(bot):
                     bot.answer_callback_query(call.id, "❌ Link not found!")
                     return
                 
-                # Create inline keyboard for voting and visiting
+                # Create inline keyboard for voting, visiting, and back button
                 keyboard = InlineKeyboardMarkup()
-                keyboard.row(
-                    InlineKeyboardButton(f"👍 {link.upvotes}", callback_data=f"upvote_{link_id}"),
-                    InlineKeyboardButton(f"👎 {link.downvotes}", callback_data=f"downvote_{link_id}")
-                )
+                
+                # If user hasn't voted, show vote buttons
+                if not link.has_voter_voted(voter_id):
+                    keyboard.row(
+                        InlineKeyboardButton(f"👍 {link.upvotes}", callback_data=f"upvote_{link_id}"),
+                        InlineKeyboardButton(f"👎 {link.downvotes}", callback_data=f"downvote_{link_id}")
+                    )
+                else:
+                    # Show disabled buttons if user has voted
+                    keyboard.row(
+                        InlineKeyboardButton(f"👍 {link.upvotes} (voted)", callback_data="already_voted"),
+                        InlineKeyboardButton(f"👎 {link.downvotes} (voted)", callback_data="already_voted")
+                    )
+                
                 keyboard.add(InlineKeyboardButton("🔗 Visit Link", url=link.url))
+                keyboard.add(InlineKeyboardButton("⬅️ Back to List", callback_data="back_to_list"))
                 
                 # Format link details
+                vote_status = "✓ You voted" if link.has_voter_voted(voter_id) else "Not voted yet"
+                
                 link_text = (
                     f"*{link.title}*\n\n"
                     f"🔗 {link.url}\n"
                     f"👀 {link.clicks} views\n"
+                    f"Score: {link.score:.1f}\n"
+                    f"{vote_status}\n"
                     f"⏰ {format_timestamp(link.submit_date)}"
                 )
                 
-                # Send new message with link details
-                bot.send_message(
-                    call.message.chat.id,
-                    link_text,
+                # Edit the existing message instead of sending a new one
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text=link_text,
                     parse_mode="Markdown",
                     reply_markup=keyboard
                 )
@@ -60,6 +77,52 @@ def register_link_handlers(bot):
             logger.error(f"Error in link view handler: {str(e)}")
             bot.answer_callback_query(call.id, "❌ An error occurred!")
 
+    @bot.callback_query_handler(func=lambda call: call.data == "back_to_list")
+    def handle_back_to_list(call: CallbackQuery):
+        """Handle back button to return to the links list."""
+        try:
+            voter_id = call.from_user.id
+            
+            with get_db_session() as session:
+                links = get_all_links(session)
+                
+                if not links:
+                    bot.edit_message_text(
+                        chat_id=call.message.chat.id,
+                        message_id=call.message.message_id,
+                        text="No links have been shared yet."
+                    )
+                    return
+                
+                # Create inline keyboard with titles as buttons
+                inline_keyboard = InlineKeyboardMarkup(row_width=1)  # One button per row
+                for link in links:
+                    # Add vote indicator if voter voted on this link
+                    vote_indicator = "✓ " if link.has_voter_voted(voter_id) else ""
+                    
+                    inline_keyboard.add(
+                        InlineKeyboardButton(
+                            text=f"{vote_indicator}{link.title} (Score: {link.score:.1f})",
+                            callback_data=f"view_link_{link.id}"
+                        )
+                    )
+                
+                # Edit message to show list again
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text="📋 *Shared Links*\nClick on a title to view details:",
+                    parse_mode="Markdown",
+                    reply_markup=inline_keyboard
+                )
+                
+                # Answer callback query
+                bot.answer_callback_query(call.id)
+                
+        except Exception as e:
+            logger.error(f"Error in back to list handler: {str(e)}")
+            bot.answer_callback_query(call.id, "❌ An error occurred!")
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('upvote_', 'downvote_')))
     def handle_vote(call: CallbackQuery):
         """Handle upvote and downvote callbacks."""
@@ -67,6 +130,7 @@ def register_link_handlers(bot):
             # Extract vote type and link_id
             action, link_id = call.data.split('_')
             link_id = int(link_id)
+            voter_id = call.from_user.id
             
             with get_db_session() as session:
                 link = get_link_by_id(link_id, session)
@@ -74,40 +138,71 @@ def register_link_handlers(bot):
                 if not link:
                     bot.answer_callback_query(call.id, "❌ Link not found!")
                     return
+
+                # Strict check if voter has already voted
+                if link.has_voter_voted(voter_id):
+                    bot.answer_callback_query(call.id, "❌ You've already voted on this link!", show_alert=True)
+                    return
                 
-                # Update vote count
-                if action == 'upvote':
-                    link.upvotes += 1
-                    vote_msg = "👍 Upvoted!"
-                else:
-                    link.downvotes += 1
-                    vote_msg = "👎 Downvoted!"
+                # Add vote
+                is_upvote = (action == 'upvote')
+                success = link.add_vote(voter_id, is_upvote)
                 
-                # Update score
-                link.score = link.upvotes - link.downvotes
+                if not success:
+                    bot.answer_callback_query(call.id, "❌ You've already voted on this link!", show_alert=True)
+                    return
                 
+                # Explicitly flush and refresh the session
+                session.flush()
+                session.refresh(link)
                 session.commit()
                 
-                # Update inline keyboard
+                logger.info(f"Vote processed - Link: {link_id}, Voter: {voter_id}, Vote type: {action}")
+                logger.info(f"Current voter_ids: {link.voter_ids}")
+                
+                vote_msg = "👍 Upvoted!" if is_upvote else "👎 Downvoted!"
+                
+                # Update message
                 keyboard = InlineKeyboardMarkup()
-                keyboard.row(
-                    InlineKeyboardButton(f"👍 {link.upvotes}", callback_data=f"upvote_{link_id}"),
-                    InlineKeyboardButton(f"👎 {link.downvotes}", callback_data=f"downvote_{link_id}")
-                )
+                
+                # If user hasn't voted, show vote buttons
+                if not link.has_voter_voted(voter_id):
+                    keyboard.row(
+                        InlineKeyboardButton(f"👍 {link.upvotes}", callback_data=f"upvote_{link_id}"),
+                        InlineKeyboardButton(f"👎 {link.downvotes}", callback_data=f"downvote_{link_id}")
+                    )
+                else:
+                    # Show disabled buttons if user has voted
+                    keyboard.row(
+                        InlineKeyboardButton(f"👍 {link.upvotes} (voted)", callback_data="already_voted"),
+                        InlineKeyboardButton(f"👎 {link.downvotes} (voted)", callback_data="already_voted")
+                    )
+                
                 keyboard.add(InlineKeyboardButton("🔗 Visit Link", url=link.url))
+                keyboard.add(InlineKeyboardButton("⬅️ Back to List", callback_data="back_to_list"))
+                
+                # Update link details message
+                vote_status = "✓ You voted" if link.has_voter_voted(voter_id) else "Not voted yet"
+                
+                link_text = (
+                    f"*{link.title}*\n\n"
+                    f"🔗 {link.url}\n"
+                    f"👀 {link.clicks} views\n"
+                    f"Score: {link.score:.1f}\n"
+                    f"{vote_status}\n"
+                    f"⏰ {format_timestamp(link.submit_date)}"
+                )
+                
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text=link_text,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard
+                )
                 
                 # Answer callback query
                 bot.answer_callback_query(call.id, vote_msg)
-                
-                # Update message
-                try:
-                    bot.edit_message_reply_markup(
-                        chat_id=call.message.chat.id,
-                        message_id=call.message.message_id,
-                        reply_markup=keyboard
-                    )
-                except Exception as e:
-                    logger.error(f"Error updating message markup: {str(e)}")
                 
         except ValueError:
             bot.answer_callback_query(call.id, "❌ Invalid vote data!")
@@ -117,6 +212,11 @@ def register_link_handlers(bot):
         except Exception as e:
             logger.error(f"Error in vote handler: {str(e)}")
             bot.answer_callback_query(call.id, "❌ An error occurred!")
+
+    @bot.callback_query_handler(func=lambda call: call.data == "already_voted")
+    def handle_already_voted(call: CallbackQuery):
+        """Handle clicks on already voted buttons."""
+        bot.answer_callback_query(call.id, "You have already voted on this link!", show_alert=True)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('visit_'))
     def handle_visit(call: CallbackQuery):
