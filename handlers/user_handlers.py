@@ -1,175 +1,187 @@
-# Import required modules
+from telebot.types import Message, ReplyKeyboardMarkup, KeyboardButton, ForceReply
+from database import get_user_by_id, save_user, get_all_links, get_db_session
+from handlers.validation import is_valid_title, is_valid_group_link
+from models.link_model import Link
 import logging
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import (
-    get_user_by_id,
-    get_all_links,
-    save_user,
-    update_user_role
-)
-from utils.helpers import rate_limit
-from datetime import datetime
+from sqlalchemy.exc import SQLAlchemyError
+from utils.helpers import format_timestamp
 
-# Set up logging
 logger = logging.getLogger(__name__)
 
 def register_user_handlers(bot):
-    """
-    Register all user-related command handlers.
-    """
+    """Register user-related command handlers."""
     
     @bot.message_handler(commands=['start'])
-    def handle_start(message):
-        """Handle the /start command."""
+    def handle_start(message: Message):
+        """Handle /start command with buttons."""
         try:
             user_id = message.from_user.id
             user = get_user_by_id(user_id)
             
             if not user:
-                # Create new user with only user_id
                 user = save_user(user_id)
             
-            welcome_message = (
-                f"Welcome! 👋\n\n"
-                "I'm your Link Posting Bot. Here's what I can do:\n"
-                "• /add <title> <link> - Add a new link\n"
-                "• /links - View all shared links\n"
-                "• /profile - View your profile\n"
-                "• /help - Show all available commands"
+            # Create keyboard with two buttons
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+            keyboard.add(
+                KeyboardButton("📝 Add Link"),
+                KeyboardButton("🔗 View Links")
             )
             
-            bot.reply_to(message, welcome_message)
+            welcome_message = "Welcome! 👋\n\nI'm your Link Posting Bot. Use the buttons below to add or view links."
+            
+            bot.reply_to(message, welcome_message, reply_markup=keyboard)
             logger.info(f"Start command handled for user {user_id}")
             
         except Exception as e:
             logger.error(f"Error in start handler: {str(e)}")
-            bot.reply_to(
-                message,
-                "Sorry, I encountered an error. Please try again later."
-            )
+            bot.reply_to(message, "Sorry, an error occurred. Please try again.")
 
-    @bot.message_handler(commands=["profile"])
-    @rate_limit(30)  # Rate limit: 30 seconds between requests
-    def handle_profile(message):
-        """
-        Handle /profile command - shows user profile and their submitted links
-        """
+    @bot.message_handler(func=lambda message: message.text == "📝 Add Link")
+    def handle_add_button(message):
+        """Handle Add Link button click."""
         try:
-            user_id = message.from_user.id
-            user = get_user_by_id(user_id)
-            
-            if not user:
-                # Create new user if not exists
-                try:
-                    user = save_user(user_id)
-                    logger.info(f"New user registered: {user_id}")
-                except Exception as e:
-                    logger.error(f"Error creating new user: {str(e)}")
-                    bot.reply_to(message, "An error occurred while creating your profile. Please try again later.")
-                    return
-
-            # Fetch links submitted by the user
-            try:
-                links = get_all_links()
-                user_links = [link for link in links if link.user_id == user.user_id]
-                
-                # Calculate user statistics
-                total_upvotes = sum(link.upvotes for link in user_links)
-                total_clicks = sum(link.clicks for link in user_links)
-                
-                # Create profile message
-                profile_text = (
-                    f"👤 *User Profile*\n\n"
-                    f"*User ID:* {user.user_id}\n"
-                    f"*Role:* {user.role}\n"
-                    f"*Member since:* {user.registration_time.strftime('%Y-%m-%d')}\n\n"
-                    f"📊 *Statistics*\n"
-                    f"Links submitted: {len(user_links)}\n"
-                    f"Total upvotes: {total_upvotes}\n"
-                    f"Total clicks: {total_clicks}\n"
-                )
-
-                # Create keyboard with user's links
-                keyboard = InlineKeyboardMarkup()
-                if user_links:
-                    profile_text += "\n🔗 *Your Recent Links:*\n"
-                    for link in user_links[:5]:  # Show only 5 most recent links
-                        btn = InlineKeyboardButton(
-                            link.title[:30] + "..." if len(link.title) > 30 else link.title,
-                            callback_data=f"link_{link.id}"
-                        )
-                        keyboard.add(btn)
-                
-                # Send profile with markdown formatting
-                bot.reply_to(
-                    message,
-                    profile_text,
-                    parse_mode="Markdown",
-                    reply_markup=keyboard if user_links else None
-                )
-                logger.info(f"Profile displayed for user {user_id}")
-                
-            except Exception as e:
-                logger.error(f"Error fetching user links: {str(e)}")
-                bot.reply_to(message, "An error occurred while fetching your profile data. Please try again later.")
-                
+            # Prompt for title
+            msg = bot.reply_to(message, "Please send the title for your link:", reply_markup=ForceReply())
+            # Register the next step handler
+            bot.register_next_step_handler(msg, process_title)
         except Exception as e:
-            logger.error(f"Error in profile handler: {str(e)}")
-            bot.reply_to(message, "An error occurred. Please try again later.")
+            logger.error(f"Error in add button handler: {str(e)}")
+            bot.reply_to(message, "Sorry, an error occurred. Please try again.")
 
-    @bot.message_handler(commands=["settings"])
-    @rate_limit(10)
-    def handle_settings(message):
-        """
-        Handle /settings command - shows user settings
-        """
+    def process_title(message):
+        """Process the title and ask for the link."""
         try:
-            user = get_user_by_id(message.from_user.id)
-            if not user:
-                bot.reply_to(message, "Please use /profile first to create your profile.")
+            title = message.text
+            
+            # Validate title
+            title_valid, title_error = is_valid_title(title)
+            if not title_valid:
+                bot.reply_to(message, f"Invalid title: {title_error}")
                 return
 
-            # Create settings keyboard
-            keyboard = InlineKeyboardMarkup()
-            keyboard.row(
-                InlineKeyboardButton("Update Profile", callback_data="settings_profile"),
-                InlineKeyboardButton("Notifications", callback_data="settings_notifications")
-            )
+            # Store title temporarily
+            bot.user_data = getattr(bot, 'user_data', {})
+            bot.user_data[message.from_user.id] = {'title': title}
+            
+            # Ask for link
+            msg = bot.reply_to(message, "Great! Now please send the link:", reply_markup=ForceReply())
+            bot.register_next_step_handler(msg, process_link)
+        except Exception as e:
+            logger.error(f"Error processing title: {str(e)}")
+            bot.reply_to(message, "Sorry, an error occurred. Please try again.")
 
+    def process_link(message):
+        """Process the link and save to database."""
+        try:
+            url = message.text
+            user_id = message.from_user.id
+            
+            # Validate link
+            url_valid, url_error = is_valid_group_link(url)
+            if not url_valid:
+                bot.reply_to(message, f"Invalid link: {url_error}")
+                return
+
+            # Get stored title
+            stored_data = bot.user_data.get(user_id, {})
+            title = stored_data.get('title')
+            
+            if not title:
+                bot.reply_to(message, "Sorry, something went wrong. Please try again.")
+                return
+
+            submit_time = None  # We'll store this for the message
+
+            # Save link to database
+            with get_db_session() as session:
+                new_link = Link(
+                    title=title,
+                    url=url,
+                    user_id=user_id
+                )
+                session.add(new_link)
+                session.flush()  # This will populate the submit_date
+                submit_time = new_link.submit_date  # Store it before committing
+                session.commit()
+
+            # Clear stored data
+            bot.user_data.pop(user_id, None)
+            
+            # Send success message with keyboard
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+            keyboard.add(
+                KeyboardButton("📝 Add Link"),
+                KeyboardButton("🔗 View Links")
+            )
+            
             bot.reply_to(
                 message,
-                "⚙️ *Settings*\nChoose what you'd like to modify:",
+                f"✅ Link added successfully!\n\n"
+                f"*Title:* {title}\n"
+                f"*Link:* {url}\n"
+                f"*Time:* {format_timestamp(submit_time)}",  # Use the stored time
                 parse_mode="Markdown",
                 reply_markup=keyboard
             )
-            logger.info(f"Settings menu displayed for user {message.from_user.id}")
             
         except Exception as e:
-            logger.error(f"Error in settings handler: {str(e)}")
-            bot.reply_to(message, "An error occurred. Please try again later.")
+            logger.error(f"Error processing link: {str(e)}")
+            bot.reply_to(message, "Sorry, an error occurred. Please try again.")
 
-    # Callback handler for settings menu
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("settings_"))
-    def handle_settings_callback(call):
-        """
-        Handle settings menu callbacks
-        """
+    @bot.message_handler(func=lambda message: message.text == "🔗 View Links")
+    def handle_view_links(message):
+        """Handle View Links button click."""
         try:
-            setting_type = call.data.split("_")[1]
-            
-            if setting_type == "profile":
-                bot.answer_callback_query(
-                    call.id,
-                    "Profile settings will be available soon!"
-                )
-            elif setting_type == "notifications":
-                bot.answer_callback_query(
-                    call.id,
-                    "Notification settings will be available soon!"
-                )
+            # Create keyboard for consistent UI
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+            keyboard.add(
+                KeyboardButton("📝 Add Link"),
+                KeyboardButton("🔗 View Links")
+            )
+
+            with get_db_session() as session:
+                links = get_all_links(session)
                 
-            logger.info(f"Settings callback handled for user {call.from_user.id}: {setting_type}")
+                if not links:
+                    bot.reply_to(
+                        message, 
+                        "No links have been shared yet.", 
+                        reply_markup=keyboard
+                    )
+                    return
+                
+                # Create inline keyboard with titles as buttons
+                inline_keyboard = InlineKeyboardMarkup(row_width=1)  # One button per row
+                for link in links:
+                    inline_keyboard.add(
+                        InlineKeyboardButton(
+                            text=f"📌 {link.title}",
+                            callback_data=f"view_link_{link.id}"
+                        )
+                    )
+                
+                # Send message with title buttons
+                bot.reply_to(
+                    message,
+                    "📋 *Shared Links*\nClick on a title to view details:",
+                    parse_mode="Markdown",
+                    reply_markup=inline_keyboard
+                )
             
         except Exception as e:
-            logger.error(f"Error in settings callback handler: {str(e)}")
-            bot.answer_callback_query(call.id, "An error occurred. Please try again.")
+            logger.error(f"Error in view links handler: {str(e)}")
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+            keyboard.add(
+                KeyboardButton("📝 Add Link"),
+                KeyboardButton("🔗 View Links")
+            )
+            bot.reply_to(
+                message, 
+                "Sorry, an error occurred while fetching links.",
+                reply_markup=keyboard
+            )
+
+    # Register all handlers
+    bot.register_next_step_handler_by_chat_id = getattr(bot, 'register_next_step_handler_by_chat_id', {})
+    bot.user_data = getattr(bot, 'user_data', {})
