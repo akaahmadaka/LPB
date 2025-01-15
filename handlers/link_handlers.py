@@ -18,7 +18,7 @@ def register_link_handlers(bot):
             link_id = int(link_id)
             
             with get_db_session() as session:
-                link = get_link_by_id(session, link_id)
+                link = get_link_by_id(link_id, session)
                 
                 if not link:
                     bot.answer_callback_query(call.id, "❌ Link not found!")
@@ -69,7 +69,7 @@ def register_link_handlers(bot):
             link_id = int(link_id)
             
             with get_db_session() as session:
-                link = get_link_by_id(session, link_id)
+                link = get_link_by_id(link_id, session)
                 
                 if not link:
                     bot.answer_callback_query(call.id, "❌ Link not found!")
@@ -127,7 +127,7 @@ def register_link_handlers(bot):
             link_id = int(link_id)
             
             with get_db_session() as session:
-                link = get_link_by_id(session, link_id)
+                link = get_link_by_id(link_id, session)
                 
                 if not link:
                     bot.answer_callback_query(call.id, "❌ Link not found!")
