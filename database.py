@@ -167,14 +167,16 @@ def save_user(user_id: int) -> User:
             logger.error(f"Error saving user: {str(e)}")
             raise
 
-def get_link_by_id(link_id: int) -> Link:
+def get_link_by_id(link_id: int, session=None) -> Link:
     """Get a link by its ID."""
-    with get_db_session() as session:
-        try:
-            return session.query(Link).get(link_id)
-        except SQLAlchemyError as e:
-            logger.error(f"Error getting link by ID: {str(e)}")
-            raise
+    try:
+        if session is None:
+            with get_db_session() as session:
+                return session.query(Link).get(link_id)
+        return session.query(Link).get(link_id)
+    except SQLAlchemyError as e:
+        logger.error(f"Error getting link by ID: {str(e)}")
+        raise
 
 def check_database_connection() -> bool:
     """Check if the database connection is working."""
