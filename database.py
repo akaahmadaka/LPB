@@ -134,13 +134,13 @@ def delete_link(link_id: int) -> bool:
             raise
 
 def get_all_links(session=None):
-    """Fetch all links from the database."""
+    """Fetch all links from the database ordered by score."""
     try:
         if session is None:
             with get_db_session() as session:
-                return session.query(Link).order_by(Link.submit_date.desc()).all()
+                return session.query(Link).order_by(Link.score.desc()).all()
         else:
-            return session.query(Link).order_by(Link.submit_date.desc()).all()
+            return session.query(Link).order_by(Link.score.desc()).all()
     except SQLAlchemyError as e:
         logger.error(f"Error fetching links: {str(e)}")
         return []
