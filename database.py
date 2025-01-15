@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
 from datetime import datetime
 from models.link_model import Link, Base as LinkBase
-from models.user_model import User, Base as UserBase, UserRole
+from models.user_model import User, Base as UserBase
 
 # Set up logging
 logging.basicConfig(
@@ -151,19 +151,14 @@ def get_user_by_id(user_id: int) -> User:
             logger.error(f"Error fetching user: {str(e)}")
             raise
 
-def save_user(user_id: int, username: str = None, 
-              first_name: str = None, last_name: str = None) -> User:
+def save_user(user_id: int) -> User:
     """Save a new user to the database."""
     with get_db_session() as session:
         try:
-            user = User(
-                user_id=user_id,
-                username=username,
-                first_name=first_name,
-                last_name=last_name
-            )
+            # Create user with only user_id
+            user = User(user_id=user_id)
             session.add(user)
-            logger.info(f"User saved successfully: {username}")
+            logger.info(f"User saved successfully: {user_id}")
             return user
         except SQLAlchemyError as e:
             logger.error(f"Error saving user: {str(e)}")

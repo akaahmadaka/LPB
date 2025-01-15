@@ -1,6 +1,6 @@
 import os
 import logging
-import telebot
+from telebot import TeleBot, apihelper  # Add apihelper import
 from config import BOT_TOKEN
 from handlers.link_handlers import register_link_handlers
 from handlers.admin_handlers import register_admin_handlers
@@ -22,7 +22,24 @@ def create_bot():
     try:
         if not BOT_TOKEN:
             raise ValueError("Bot token not found in configuration")
-        return telebot.TeleBot(BOT_TOKEN, parse_mode='Markdown')
+            
+        # Enable middleware support BEFORE creating the bot instance
+        apihelper.ENABLE_MIDDLEWARE = True
+        
+        # Create bot instance
+        bot = TeleBot(BOT_TOKEN, parse_mode='Markdown')
+        
+        # Add global error handling
+        @bot.middleware_handler(update_types=['message'])
+        def global_error_handler(bot_instance, update):
+            try:
+                logger.debug(f"Processing update: {update}")
+                return True  # Continue processing
+            except Exception as e:
+                logger.error(f"Error in middleware: {str(e)}")
+                return False  # Stop processing on error
+        
+        return bot
     except Exception as e:
         logger.error(f"Error creating bot: {str(e)}")
         raise
