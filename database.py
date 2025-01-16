@@ -1,4 +1,4 @@
-import logging
+from utils.logger import logger
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import SQLAlchemyError
@@ -6,17 +6,6 @@ from contextlib import contextmanager
 from datetime import datetime
 from models.link_model import Link, Base as LinkBase
 from models.user_model import User, Base as UserBase
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('database.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 # Database configuration
 DATABASE_URI = 'sqlite:///links.db'

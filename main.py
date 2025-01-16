@@ -1,4 +1,4 @@
-import logging
+from utils.logger import logger
 from config import bot  # Import bot instance from config
 from handlers.link_handlers import register_link_handlers
 from handlers.admin_handlers import register_admin_handlers
@@ -6,16 +6,6 @@ from handlers.user_handlers import register_user_handlers
 from handlers.start_handler import handle_start
 from utils.scheduler import link_scheduler
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 def setup_handlers():
     """Set up all message handlers for the bot."""
