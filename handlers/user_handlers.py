@@ -14,6 +14,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 from utils.helpers import format_timestamp
 from config import ADMINS
+from handlers.start_handler import handle_start  # Import the main start handler
 
 logger = logging.getLogger(__name__)
 
@@ -21,31 +22,9 @@ def register_user_handlers(bot):
     """Register user-related command handlers."""
     
     @bot.message_handler(commands=['start'])
-    def handle_start(message: Message):
-        """Handle /start command with buttons."""
-        try:
-            user_id = message.from_user.id
-            user = get_user_by_id(user_id)
-            
-            if not user:
-                user = save_user(user_id)
-            
-            # Create keyboard with two buttons
-            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-            keyboard.add(
-                KeyboardButton("📝 Add Link"),
-                KeyboardButton("🔗 View Links"),
-                KeyboardButton("💎 Check Credits")
-            )
-            
-            welcome_message = "Welcome! 👋\n\nI'm your Link Posting Bot. Use the buttons below to add or view links."
-            
-            bot.reply_to(message, welcome_message, reply_markup=keyboard)
-            logger.info(f"Start command handled for user {user_id}")
-            
-        except Exception as e:
-            logger.error(f"Error in start handler: {str(e)}")
-            bot.reply_to(message, "Sorry, an error occurred. Please try again.")
+    def start_command(message: Message):
+        """Forward start command to main handler"""
+        handle_start(message, bot)
 
     @bot.message_handler(func=lambda message: message.text == "📝 Add Link")
     def handle_add_button(message):
