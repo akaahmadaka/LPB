@@ -17,6 +17,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def is_admin(user_id: int) -> bool:
+    """
+    Check if a user is an admin with additional logging.
+    
+    Args:
+        user_id (int): The user's Telegram ID
+        
+    Returns:
+        bool: True if user is admin, False otherwise
+    """
+    try:
+        admin_status = user_id in ADMINS
+        if admin_status:
+            logger.info(f"Admin action performed by user {user_id}")
+        return admin_status
+    except Exception as e:
+        logger.error(f"Error checking admin status: {str(e)}")
+        return False
+
 def rate_limit(seconds: int) -> Callable:
     """
     Decorator to rate limit function calls per user.
@@ -45,22 +64,6 @@ def rate_limit(seconds: int) -> Callable:
             
         return wrapper
     return decorator
-
-def is_admin(user_id: int) -> bool:
-    """
-    Check if a user is an admin.
-    
-    Args:
-        user_id (int): Telegram user ID
-        
-    Returns:
-        bool: True if user is admin, False otherwise
-    """
-    try:
-        return user_id in ADMINS
-    except Exception as e:
-        logger.error(f"Error checking admin status: {str(e)}")
-        return False
 
 def format_timestamp(timestamp: datetime) -> str:
     """

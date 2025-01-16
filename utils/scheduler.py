@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 import logging
 from database import get_db_session, get_all_links, delete_link
 from typing import List
-from pytz import utc  # Import UTC timezone
+from pytz import utc
+from utils.helpers import is_admin
+from config import ADMINS
 
 # Set up logging
 logging.basicConfig(
@@ -33,21 +35,41 @@ class LinkCleanupScheduler:
     def cleanup_old_links(self):
         """Remove links that are older than the specified number of days"""
         try:
-            current_time = datetime.utcnow()  # Explicitly use UTC
+            current_time = datetime.utcnow()
             cutoff_time = current_time - timedelta(days=self.cleanup_days)
             
             with get_db_session() as session:
-                links = get_all_links(session)
+                # Get expired links
+                expired_links = (
+                    session.query(Link)
+                    .filter(Link.submit_date < cutoff_time)
+                    .all()
+                )
+                
                 removed_count = 0
-                
-                for link in links:
-                    if link.submit_date < cutoff_time:
-                        logger.info(f"Removing old link: {link.title} (ID: {link.id})")
-                        delete_link(link.id)
+                admin_count = 0
+                for link in expired_links:
+                    is_admin = is_admin(link.user_id)
+                    logger.info(
+                        f"Removing old link: {link.title} (ID: {link.id}) "
+                        f"from {'admin' if is_admin else 'user'} {link.user_id}"
+                    )
+                    
+                    if not is_admin:
+                        # Only log "can add new link" for regular users
+                        logger.info(f"User {link.user_id} can now add a new link")
                         removed_count += 1
+                    else:
+                        admin_count += 1
+                        
+                    session.delete(link)
                 
-                logger.info(f"Cleanup completed at {current_time.strftime('%Y-%m-%d %H:%M:%S UTC')}. "
-                          f"Removed {removed_count} old links.")
+                session.commit()
+                
+                logger.info(
+                    f"Cleanup completed at {current_time.strftime('%Y-%m-%d %H:%M:%S UTC')}. "
+                    f"Removed {removed_count} regular user links and {admin_count} admin links."
+                )
                 
         except Exception as e:
             logger.error(f"Error during link cleanup: {str(e)}")
