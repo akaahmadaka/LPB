@@ -1,11 +1,9 @@
-import logging
+from utils.logger import logger
 from telebot.types import Message
 from utils.scheduler import link_scheduler
 from utils.helpers import is_admin
 from config import bot  # Import bot instance from config
 
-# Set up logging
-logger = logging.getLogger(__name__)
 
 def register_admin_handlers(bot):
     """

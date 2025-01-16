@@ -1,12 +1,10 @@
 from config import ADMINS
+from utils.logger import logger
 from database import get_db_session
 from models.user_model import User
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
-import logging
+from utils.logger import logger
 
-# Enhanced logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 def handle_start(message, bot):
     """Handle the /start command with referral system."""

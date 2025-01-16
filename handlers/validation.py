@@ -1,19 +1,9 @@
 import re
-import logging
+from utils.logger import logger
 from urllib.parse import urlparse
 from typing import Tuple, Optional
 from datetime import datetime
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('validation.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 class ValidationError(Exception):
     """Custom exception for validation errors."""

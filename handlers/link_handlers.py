@@ -1,12 +1,10 @@
 from telebot.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database import get_db_session, get_link_by_id, get_all_links
-import logging
+from utils.logger import logger
 from sqlalchemy.exc import SQLAlchemyError
 from utils.helpers import format_timestamp
 from config import ADMINS
 from models.user_model import User
-
-logger = logging.getLogger(__name__)
 
 def register_link_handlers(bot):
     """Register link-related handlers."""
