@@ -9,9 +9,11 @@ from telebot.types import (
 from database import get_user_by_id, save_user, get_all_links, get_db_session
 from handlers.validation import is_valid_title, is_valid_group_link
 from models.link_model import Link
+from models.user_model import User
 import logging
 from sqlalchemy.exc import SQLAlchemyError
 from utils.helpers import format_timestamp
+from config import ADMINS
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,8 @@ def register_user_handlers(bot):
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
                 KeyboardButton("📝 Add Link"),
-                KeyboardButton("🔗 View Links")
+                KeyboardButton("🔗 View Links"),
+                KeyboardButton("💎 Check Credits")
             )
             
             welcome_message = "Welcome! 👋\n\nI'm your Link Posting Bot. Use the buttons below to add or view links."
@@ -119,7 +122,8 @@ def register_user_handlers(bot):
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
                 KeyboardButton("📝 Add Link"),
-                KeyboardButton("🔗 View Links")
+                KeyboardButton("🔗 View Links"),
+                KeyboardButton("💎 Check Credits")
             )
             
             bot.reply_to(
@@ -144,7 +148,8 @@ def register_user_handlers(bot):
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
                 KeyboardButton("📝 Add Link"),
-                KeyboardButton("🔗 View Links")
+                KeyboardButton("🔗 View Links"),
+                KeyboardButton("💎 Check Credits")
             )
 
             with get_db_session() as session:
@@ -181,13 +186,56 @@ def register_user_handlers(bot):
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
                 KeyboardButton("📝 Add Link"),
-                KeyboardButton("🔗 View Links")
+                KeyboardButton("🔗 View Links"),
+                KeyboardButton("💎 Check Credits")
             )
             bot.reply_to(
                 message, 
                 "Sorry, an error occurred while fetching links.",
                 reply_markup=keyboard
             )
+
+    @bot.message_handler(func=lambda message: message.text == "💎 Check Credits")
+    def handle_check_credits(message):
+        """Handle Check Credits button click."""
+        try:
+            user_id = message.from_user.id
+            
+            with get_db_session() as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if not user:
+                    # Create user if doesn't exist
+                    user = User(user_id=user_id, credits=5)
+                    session.add(user)
+                    session.commit()
+                
+                bot_username = bot.get_me().username
+                referral_link = f"t.me/{bot_username}?start={user_id}"
+                message_text = (
+                    f"💎 You have {user.credits} credits\n\n"
+                    "To earn more credits:\n"
+                    "- Invite friends using your referral link\n"
+                    "- Get 3 credits for each new user\n\n"
+                    f"Your referral link: {referral_link}"
+                )
+                
+                # Create keyboard for consistent UI
+                keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+                keyboard.add(
+                    KeyboardButton("📝 Add Link"),
+                    KeyboardButton("🔗 View Links"),
+                    KeyboardButton("💎 Check Credits")
+                )
+                
+                bot.reply_to(
+                    message,
+                    message_text,
+                    reply_markup=keyboard
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in check credits handler: {str(e)}")
+            bot.reply_to(message, "Sorry, an error occurred while checking credits.")
 
     # Register all handlers
     bot.register_next_step_handler_by_chat_id = getattr(bot, 'register_next_step_handler_by_chat_id', {})
