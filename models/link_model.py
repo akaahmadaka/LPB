@@ -20,6 +20,8 @@ class Link(Base):
     score = Column(Float, default=0.0)
     # Store voter IDs as comma-separated string
     voter_ids = Column(String(1000), default='')
+    # Add clicker_ids column
+    clicker_ids = Column(String(1000), default='')
     
     # Relationship with User
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
@@ -32,6 +34,7 @@ class Link(Base):
         self.user_id = user_id
         self.submit_date = datetime.utcnow()
         self.voter_ids = ''
+        self.clicker_ids = ''
         self.upvotes = 0
         self.downvotes = 0
         self.score = 0.0
@@ -47,9 +50,23 @@ class Link(Base):
         """Convert list of voter IDs to comma-separated string"""
         self.voter_ids = ','.join(str(id_) for id_ in id_list)
 
+    def _get_clicker_id_list(self):
+        """Convert clicker_ids string to list of integers"""
+        if not self.clicker_ids:
+            return []
+        return [int(id_) for id_ in self.clicker_ids.split(',') if id_]
+
+    def _save_clicker_id_list(self, id_list):
+        """Convert list of clicker IDs to comma-separated string"""
+        self.clicker_ids = ','.join(str(id_) for id_ in id_list)
+
     def has_voter_voted(self, voter_id: int) -> bool:
         """Check if voter has already voted."""
         return str(voter_id) in self.voter_ids.split(',') if self.voter_ids else False
+
+    def has_user_clicked(self, user_id: int) -> bool:
+        """Check if user has already clicked."""
+        return str(user_id) in self.clicker_ids.split(',') if self.clicker_ids else False
 
     def add_vote(self, voter_id: int, is_upvote: bool) -> bool:
         """Add a vote if voter hasn't voted before."""
@@ -76,6 +93,29 @@ class Link(Base):
             
         except Exception as e:
             logger.error(f"Error adding vote: {str(e)}")
+            return False
+
+    def add_click(self, user_id: int) -> bool:
+        """Add a click if user hasn't clicked before."""
+        try:
+            # Check if user has already clicked
+            if self.has_user_clicked(user_id):
+                logger.info(f"User {user_id} has already clicked on link {self.id}")
+                return False
+                
+            # Add user ID to clickers
+            current_clickers = self._get_clicker_id_list()
+            current_clickers.append(user_id)
+            self._save_clicker_id_list(current_clickers)
+            
+            # Increment click counter
+            self.clicks += 1
+            self.calculate_score()
+            logger.info(f"Click added for link {self.id} by user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error adding click: {str(e)}")
             return False
 
     def calculate_score(self) -> float:

@@ -7,11 +7,13 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 class User(Base):
-    """User model with only user_id"""
+    """User model with credits and referral tracking"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, unique=True, nullable=False, index=True)
+    credits = Column(Integer, default=5)  # Initial 5 credits for new users
+    referred_by = Column(Integer, nullable=True)  # Store who referred this user
     
     # Keep the relationship with links
     links = relationship(
@@ -21,10 +23,12 @@ class User(Base):
         lazy="dynamic"
     )
 
-    def __init__(self, user_id: int):
+    def __init__(self, user_id: int, credits: int = 5, referred_by: int = None):
         """Initialize a new User instance."""
         self.user_id = user_id
+        self.credits = credits
+        self.referred_by = referred_by
 
     def __repr__(self):
         """String representation of User."""
-        return f"<User(user_id={self.user_id})>"
+        return f"<User(user_id={self.user_id}, credits={self.credits})>"
