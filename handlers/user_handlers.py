@@ -12,11 +12,63 @@ from models.link_model import Link
 from models.user_model import User
 import logging
 from sqlalchemy.exc import SQLAlchemyError
-from utils.helpers import format_timestamp
+from utils.helpers import format_timestamp, is_admin as is_admin_user
 from config import ADMINS
-from handlers.start_handler import handle_start  # Import the main start handler
+from handlers.start_handler import handle_start
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+def check_active_link(user_id: int, session) -> tuple[bool, str]:
+    """
+    Check if user has an active link and calculate time remaining if they do.
+    Admins are exempt from this check.
+    
+    Args:
+        user_id (int): The user's Telegram ID
+        session: The database session
+        
+    Returns:
+        tuple[bool, str]: (has_active_link, message)
+    """
+    try:
+        # First check if user is admin
+        if is_admin_user(user_id):
+            return False, ""  # Admins can always post
+            
+        # Get user's most recent link
+        user_link = (
+            session.query(Link)
+            .filter(Link.user_id == user_id)
+            .order_by(Link.submit_date.desc())
+            .first()
+        )
+        
+        if not user_link:
+            return False, ""
+            
+        # Calculate time remaining
+        current_time = datetime.utcnow()
+        link_age = current_time - user_link.submit_date
+        cleanup_days = 3  # Get this from your config
+        time_remaining = timedelta(days=cleanup_days) - link_age
+        
+        # If link hasn't expired yet
+        if time_remaining.total_seconds() > 0:
+            hours = int(time_remaining.total_seconds() / 3600)
+            minutes = int((time_remaining.total_seconds() % 3600) / 60)
+            return True, (
+                f"You already have an active link:\n"
+                f"Title: {user_link.title}\n"
+                f"Time remaining: {hours} hours and {minutes} minutes\n\n"
+                f"Regular users can only have one active link at a time."
+            )
+            
+        return False, ""
+        
+    except Exception as e:
+        logger.error(f"Error checking active link: {str(e)}")
+        return False, "Error checking link status"
 
 def register_user_handlers(bot):
     """Register user-related command handlers."""
@@ -30,10 +82,32 @@ def register_user_handlers(bot):
     def handle_add_button(message):
         """Handle Add Link button click."""
         try:
-            # Prompt for title
-            msg = bot.reply_to(message, "Please send the title for your link:", reply_markup=ForceReply())
-            # Register the next step handler
-            bot.register_next_step_handler(msg, process_title)
+            user_id = message.from_user.id
+            is_admin = is_admin_user(user_id)
+            
+            with get_db_session() as session:
+                # Check if user has an active link (skipped for admins)
+                if not is_admin:
+                    has_active_link, time_message = check_active_link(user_id, session)
+                    
+                    if has_active_link:
+                        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+                        keyboard.add(
+                            KeyboardButton("📝 Add Link"),
+                            KeyboardButton("🔗 View Links"),
+                            KeyboardButton("💎 Check Credits")
+                        )
+                        bot.reply_to(message, time_message, reply_markup=keyboard)
+                        return
+                
+                # If admin or no active link, proceed with title prompt
+                prompt = "Please send the title for your link:"
+                if is_admin:
+                    prompt = "[Admin] " + prompt
+                    
+                msg = bot.reply_to(message, prompt, reply_markup=ForceReply())
+                bot.register_next_step_handler(msg, process_title)
+                
         except Exception as e:
             logger.error(f"Error in add button handler: {str(e)}")
             bot.reply_to(message, "Sorry, an error occurred. Please try again.")
