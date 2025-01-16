@@ -1,23 +1,13 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timedelta
-import logging
+from utils.logger import logger
 from database import get_db_session, get_all_links, delete_link
 from typing import List
 from pytz import utc
 from utils.helpers import is_admin
 from config import ADMINS
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('scheduler.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 class LinkCleanupScheduler:
     def __init__(self):

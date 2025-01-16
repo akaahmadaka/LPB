@@ -1,18 +1,8 @@
-import logging
+from utils.logger import logger
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from models.link_model import Link
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('ranking.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 class RankingCalculator:
     """Class to handle link ranking calculations."""

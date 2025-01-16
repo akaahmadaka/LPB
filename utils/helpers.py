@@ -1,21 +1,11 @@
 import re
-import logging
+from utils.logger import logger
 from functools import wraps
 from time import time
 from typing import Callable, Any, Dict, Optional
 from datetime import datetime, timedelta
 from config import ADMINS
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('helpers.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 def is_admin(user_id: int) -> bool:
     """
