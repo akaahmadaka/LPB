@@ -3,6 +3,7 @@ from config import bot  # Import bot instance from config
 from handlers.link_handlers import register_link_handlers
 from handlers.admin_handlers import register_admin_handlers
 from handlers.user_handlers import register_user_handlers
+from handlers.start_handler import handle_start
 from utils.scheduler import link_scheduler
 
 # Set up logging
@@ -23,6 +24,12 @@ def setup_handlers():
         register_link_handlers(bot)
         register_admin_handlers(bot)
         register_user_handlers(bot)
+        
+        # Register start handler
+        @bot.message_handler(commands=['start'])
+        def start(message):
+            handle_start(message, bot)
+        
         logger.info("All handlers registered successfully")
     except Exception as e:
         logger.error(f"Error setting up handlers: {str(e)}")
