@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from .user_model import Base
 
@@ -39,6 +39,37 @@ class Link(Base):
         self.downvotes = 0
         self.score = 0.0
         self.clicks = 0
+
+    def is_expired(self) -> bool:
+        """
+        Check if the link has expired.
+        
+        Returns:
+            bool: True if link has expired, False otherwise
+        """
+        try:
+            current_time = datetime.utcnow()
+            link_age = current_time - self.submit_date
+            return link_age > timedelta(days=3)  # Use your configured cleanup_days
+        except Exception as e:
+            logger.error(f"Error checking link expiry: {str(e)}")
+            return False
+
+    def time_until_expiry(self) -> timedelta:
+        """
+        Calculate time remaining until link expires.
+        
+        Returns:
+            timedelta: Time remaining until expiry
+        """
+        try:
+            current_time = datetime.utcnow()
+            link_age = current_time - self.submit_date
+            cleanup_days = 3  # Get this from your config
+            return max(timedelta(days=cleanup_days) - link_age, timedelta(0))
+        except Exception as e:
+            logger.error(f"Error calculating expiry time: {str(e)}")
+            return timedelta(0)
 
     def _get_voter_id_list(self):
         """Convert voter_ids string to list of integers"""
