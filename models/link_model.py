@@ -1,10 +1,9 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime, timedelta
-import logging
+from utils.logger import logger
 from .user_model import Base
 
-logger = logging.getLogger(__name__)
 
 class Link(Base):
     """Link model with voting users tracking"""
