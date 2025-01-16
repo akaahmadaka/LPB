@@ -1,10 +1,9 @@
-import os
 import logging
-from telebot import TeleBot, apihelper  # Add apihelper import
-from config import BOT_TOKEN
+from config import bot  # Import bot instance from config
 from handlers.link_handlers import register_link_handlers
 from handlers.admin_handlers import register_admin_handlers
 from handlers.user_handlers import register_user_handlers
+from utils.scheduler import link_scheduler
 
 # Set up logging
 logging.basicConfig(
@@ -17,58 +16,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def create_bot():
-    """Create and configure the bot instance."""
-    try:
-        if not BOT_TOKEN:
-            raise ValueError("Bot token not found in configuration")
-            
-        # Enable middleware support BEFORE creating the bot instance
-        apihelper.ENABLE_MIDDLEWARE = True
-        
-        # Create bot instance
-        bot = TeleBot(BOT_TOKEN, parse_mode='Markdown')
-        
-        # Add global error handling
-        @bot.middleware_handler(update_types=['message'])
-        def global_error_handler(bot_instance, update):
-            try:
-                logger.debug(f"Processing update: {update}")
-                return True  # Continue processing
-            except Exception as e:
-                logger.error(f"Error in middleware: {str(e)}")
-                return False  # Stop processing on error
-        
-        return bot
-    except Exception as e:
-        logger.error(f"Error creating bot: {str(e)}")
-        raise
-
-def setup_handlers(bot):
+def setup_handlers():
     """Set up all message handlers for the bot."""
     try:
-        # Register handlers and check for successful registration
-        if not bot:
-            raise ValueError("Bot instance is None")
-
         # Register handlers
         register_link_handlers(bot)
         register_admin_handlers(bot)
         register_user_handlers(bot)
-
         logger.info("All handlers registered successfully")
     except Exception as e:
         logger.error(f"Error setting up handlers: {str(e)}")
         raise
 
+def setup_scheduler():
+    """Setup and start the link cleanup scheduler"""
+    try:
+        # Default configuration: 4 times per day, keep links for 3 days
+        link_scheduler.setup_schedule(runs_per_day=4, cleanup_days=3)
+        link_scheduler.start()
+        logger.info("Link cleanup scheduler initialized")
+    except Exception as e:
+        logger.error(f"Error setting up scheduler: {str(e)}")
+
 def main():
     """Main function to run the bot."""
     try:
-        # Create bot instance
-        bot = create_bot()
-        
         # Setup handlers
-        setup_handlers(bot)
+        setup_handlers()
+        
+        # Setup and start scheduler
+        setup_scheduler()
         
         # Log bot information
         bot_info = bot.get_me()
@@ -80,6 +57,9 @@ def main():
     except Exception as e:
         logger.error(f"Bot crashed: {str(e)}")
         raise
+    finally:
+        # Ensure scheduler is stopped when bot stops
+        link_scheduler.stop()
 
 if __name__ == "__main__":
     try:
