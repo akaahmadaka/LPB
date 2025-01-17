@@ -9,9 +9,14 @@ class ValidationError(Exception):
     """Custom exception for validation errors."""
     pass
 
+
 def is_valid_group_link(url: str) -> Tuple[bool, Optional[str]]:
     """
     Validate a Telegram group link.
+    Supports:
+    - Public groups: t.me/username
+    - Private groups: t.me/+code
+    - Joinchat links: t.me/joinchat/code
     
     Args:
         url (str): The URL to validate
@@ -41,10 +46,17 @@ def is_valid_group_link(url: str) -> Tuple[bool, Optional[str]]:
         # Extract and validate path
         path = parsed_url.path.strip('/')
         
-        # Handle private group links
+        # Handle joinchat links
         if path.startswith('joinchat/'):
             invite_code = path.split('/')[-1]
             if not re.match(r'^[a-zA-Z0-9_-]{16,}$', invite_code):
+                return False, "Invalid private group invite code"
+            return True, None
+
+        # Handle private group links (t.me/+xxxxxxxx format)
+        if path.startswith('+'):
+            invite_code = path[1:]  # Remove the '+' prefix
+            if not re.match(r'^[a-zA-Z0-9_-]{8,}$', invite_code):
                 return False, "Invalid private group invite code"
             return True, None
 
@@ -84,6 +96,7 @@ def is_valid_group_link(url: str) -> Tuple[bool, Optional[str]]:
     except Exception as e:
         logger.error(f"Error validating URL {url}: {str(e)}")
         return False, "Error validating URL"
+
 
 def is_valid_title(title: str) -> Tuple[bool, Optional[str]]:
     """
@@ -134,6 +147,7 @@ def is_valid_title(title: str) -> Tuple[bool, Optional[str]]:
         logger.error(f"Error validating title: {str(e)}")
         return False, "Error validating title"
 
+
 def is_valid_message(message: str) -> Tuple[bool, Optional[str]]:
     """
     Validate a message content.
@@ -170,6 +184,7 @@ def is_valid_message(message: str) -> Tuple[bool, Optional[str]]:
     except Exception as e:
         logger.error(f"Error validating message: {str(e)}")
         return False, "Error validating message"
+
 
 def sanitize_input(text: str) -> str:
     """

@@ -71,23 +71,23 @@ def register_link_handlers(bot):
                 else:
                     # Show disabled buttons if user has voted
                     keyboard.row(
-                        InlineKeyboardButton(f"👍 {link.upvotes} (voted)", callback_data="already_voted"),
-                        InlineKeyboardButton(f"👎 {link.downvotes} (voted)", callback_data="already_voted")
+                        InlineKeyboardButton(f"👍 {link.upvotes} ", callback_data="already_voted"),
+                        InlineKeyboardButton(f"👎 {link.downvotes} ", callback_data="already_voted")
                     )
                 
                 keyboard.add(InlineKeyboardButton("🔗 Visit Link", url=link.url))
                 keyboard.add(InlineKeyboardButton("⬅️ Back to List", callback_data="back_to_list"))
                 
                 # Format link details
-                vote_status = "✓ You voted" if link.has_voter_voted(user_id) else "Not voted yet"
+               # vote_status = "✓ You voted" if link.has_voter_voted(user_id) else "Not voted yet"
                 
                 link_text = (
                     f"*{link.title}*\n\n"
                     f"🔗 {link.url}\n"
                     f"👀 {link.clicks} views\n"
-                    f"Score: {link.score:.1f}\n"
-                    f"{vote_status}\n"
-                    f"⏰ {format_timestamp(link.submit_date)}"
+                   # f"Score: {link.score:.1f}\n"
+                   # f"{vote_status}\n"
+                   # f"⏰ {format_timestamp(link.submit_date)}"
                 )
                 
                 # Edit the existing message instead of sending a new one
@@ -132,11 +132,11 @@ def register_link_handlers(bot):
                 inline_keyboard = InlineKeyboardMarkup(row_width=1)  # One button per row
                 for link in links:
                     # Add vote indicator if voter voted on this link
-                    vote_indicator = "✓ " if link.has_voter_voted(voter_id) else ""
+                   # vote_indicator = "✓ " if link.has_voter_voted(voter_id) else ""
                     
                     inline_keyboard.add(
                         InlineKeyboardButton(
-                            text=f"{vote_indicator}{link.title} (Score: {link.score:.1f})",
+                            text=f"{link.title} ",
                             callback_data=f"view_link_{link.id}"
                         )
                     )
@@ -208,23 +208,23 @@ def register_link_handlers(bot):
                 else:
                     # Show disabled buttons if user has voted
                     keyboard.row(
-                        InlineKeyboardButton(f"👍 {link.upvotes} (voted)", callback_data="already_voted"),
-                        InlineKeyboardButton(f"👎 {link.downvotes} (voted)", callback_data="already_voted")
+                        InlineKeyboardButton(f"👍 {link.upvotes} ", callback_data="already_voted"),
+                        InlineKeyboardButton(f"👎 {link.downvotes} ", callback_data="already_voted")
                     )
                 
                 keyboard.add(InlineKeyboardButton("🔗 Visit Link", url=link.url))
                 keyboard.add(InlineKeyboardButton("⬅️ Back to List", callback_data="back_to_list"))
                 
                 # Update link details message
-                vote_status = "✓ You voted" if link.has_voter_voted(voter_id) else "Not voted yet"
+                #vote_status = "✓ You voted" if link.has_voter_voted(voter_id) else "Not voted yet"
                 
                 link_text = (
                     f"*{link.title}*\n\n"
                     f"🔗 {link.url}\n"
                     f"👀 {link.clicks} views\n"
-                    f"Score: {link.score:.1f}\n"
-                    f"{vote_status}\n"
-                    f"⏰ {format_timestamp(link.submit_date)}"
+                    #f"Score: {link.score:.1f}\n"
+                    #f"{vote_status}\n"
+                    #f"⏰ {format_timestamp(link.submit_date)}"
                 )
                 
                 bot.edit_message_text(

@@ -14,7 +14,7 @@ def handle_start(message, bot):
     # Create keyboard with buttons
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(
-        KeyboardButton("📝 Add Link"),
+        KeyboardButton("📝 Add Your Link"),
         KeyboardButton("🔗 View Links"),
         KeyboardButton("💎 Check Credits")
     )
@@ -69,8 +69,7 @@ def handle_start(message, bot):
                     # Prepare welcome messages
                     welcome_msg = (
                         f"Welcome! 👋\n\n"
-                        f"You have 5 credits to start with.\n"
-                        f"You were referred by user {referral_id}.\n\n"
+                        f"Here you can find group links Or YOU CAN ALSO SHARE YOUR GROUP LINK\n"
                         f"Use the buttons below to add or view links!"
                     )
                     
@@ -78,7 +77,7 @@ def handle_start(message, bot):
                     try:
                         bot.send_message(
                             referral_id,
-                            f"🎉 New user {user_id} joined using your referral!\n"
+                            f"🎉 1 New user joined using your referral!\n"
                             f"You received 3 credits!\n"
                             f"Your new balance: {referrer.credits} credits"
                         )
@@ -88,7 +87,7 @@ def handle_start(message, bot):
                 else:
                     welcome_msg = (
                         f"Welcome! 👋\n\n"
-                        f"You have 5 credits to start with.\n\n"
+                        f"Here you can find group links Or YOU CAN ALSO SHARE YOUR GROUP LINK\n"
                         f"Use the buttons below to add or view links!"
                     )
                 
@@ -104,8 +103,8 @@ def handle_start(message, bot):
                 
                 response_msg = (
                     f"Welcome back! 👋\n\n"
-                    f"You have {user.credits} credits remaining.\n\n"
-                    f"Share your referral link to earn 3 credits:\n{referral_link}"
+                    f"Here you can find group links Or YOU CAN ALSO SHARE YOUR GROUP LINK\n\n"
+                    f"Use the buttons below to add or view links!"
                 )
                 bot.reply_to(message, response_msg, reply_markup=keyboard)
                 logger.info("Sent welcome back message to existing user")

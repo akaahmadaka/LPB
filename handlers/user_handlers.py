@@ -10,14 +10,13 @@ from database import get_user_by_id, save_user, get_all_links, get_db_session
 from handlers.validation import is_valid_title, is_valid_group_link
 from models.link_model import Link
 from models.user_model import User
-import logging
+from utils.logger import logger
 from sqlalchemy.exc import SQLAlchemyError
 from utils.helpers import format_timestamp, is_admin as is_admin_user
 from config import ADMINS
 from handlers.start_handler import handle_start
 from datetime import datetime, timedelta
 
-logger = logging.getLogger(__name__)
 
 def check_active_link(user_id: int, session) -> tuple[bool, str]:
     """
@@ -78,7 +77,7 @@ def register_user_handlers(bot):
         """Forward start command to main handler"""
         handle_start(message, bot)
 
-    @bot.message_handler(func=lambda message: message.text == "📝 Add Link")
+    @bot.message_handler(func=lambda message: message.text == "📝 Add Your Link")
     def handle_add_button(message):
         """Handle Add Link button click."""
         try:
@@ -93,20 +92,36 @@ def register_user_handlers(bot):
                     if has_active_link:
                         keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
                         keyboard.add(
-                            KeyboardButton("📝 Add Link"),
+                            KeyboardButton("📝 Add Your Link"),
                             KeyboardButton("🔗 View Links"),
                             KeyboardButton("💎 Check Credits")
                         )
                         bot.reply_to(message, time_message, reply_markup=keyboard)
                         return
                 
-                # If admin or no active link, proceed with title prompt
+                # Send warning message first
+                warning_message = (
+                    "⚠️DISCLAIMER⚠️\n"
+                    "We strictly prohibit and do not endorse any illegal activities, including but not limited to "
+                    "hacking, spamming, pornography, or any other harmful material. Violations of these restrictions "
+                    "will result in immediate and strict action.\n\n"
+                    "Please verify the title and link before sending, as they cannot be changed after submission."
+                )
+                bot.send_message(message.chat.id, warning_message)
+                
+                # Wait a short moment before sending the prompt
+                # Use force reply to ensure we get a response from the correct user
                 prompt = "Please send the title for your link:"
                 if is_admin:
                     prompt = "[Admin] " + prompt
                     
-                msg = bot.reply_to(message, prompt, reply_markup=ForceReply())
-                bot.register_next_step_handler(msg, process_title)
+                # Important: Register the next step handler after sending the message
+                sent_msg = bot.send_message(
+                    message.chat.id,
+                    prompt,
+                    reply_markup=ForceReply()
+                )
+                bot.register_next_step_handler(sent_msg, process_title)
                 
         except Exception as e:
             logger.error(f"Error in add button handler: {str(e)}")
@@ -174,7 +189,7 @@ def register_user_handlers(bot):
             # Send success message with keyboard
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
-                KeyboardButton("📝 Add Link"),
+                KeyboardButton("📝 Add Your Link"),
                 KeyboardButton("🔗 View Links"),
                 KeyboardButton("💎 Check Credits")
             )
@@ -200,7 +215,7 @@ def register_user_handlers(bot):
             # Create keyboard for consistent UI
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
-                KeyboardButton("📝 Add Link"),
+                KeyboardButton("📝 Add Your Link"),
                 KeyboardButton("🔗 View Links"),
                 KeyboardButton("💎 Check Credits")
             )
@@ -238,7 +253,7 @@ def register_user_handlers(bot):
             logger.error(f"Error in view links handler: {str(e)}")
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
-                KeyboardButton("📝 Add Link"),
+                KeyboardButton("📝 Add Your Link"),
                 KeyboardButton("🔗 View Links"),
                 KeyboardButton("💎 Check Credits")
             )
@@ -275,7 +290,7 @@ def register_user_handlers(bot):
                 # Create keyboard for consistent UI
                 keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
                 keyboard.add(
-                    KeyboardButton("📝 Add Link"),
+                    KeyboardButton("📝 Add Your Link"),
                     KeyboardButton("🔗 View Links"),
                     KeyboardButton("💎 Check Credits")
                 )
