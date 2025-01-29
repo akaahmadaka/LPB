@@ -14,7 +14,7 @@ def is_valid_group_link(url: str) -> Tuple[bool, Optional[str]]:
     """
     Validate a Telegram group link.
     Supports:
-    - Public groups: t.me/username
+    - Public groups: t.me/username or t.me/username_name
     - Private groups: t.me/+code
     - Joinchat links: t.me/joinchat/code
     
@@ -55,13 +55,14 @@ def is_valid_group_link(url: str) -> Tuple[bool, Optional[str]]:
 
         # Handle private group links (t.me/+xxxxxxxx format)
         if path.startswith('+'):
-            invite_code = path[1:]  # Remove the '+' prefix
-            if not re.match(r'^[a-zA-Z0-9_-]{8,}$', invite_code):
+            # Allow any characters after the plus sign
+            # This fixes the issue with complex private group links
+            if len(path) < 2:  # Ensure there's at least one character after +
                 return False, "Invalid private group invite code"
             return True, None
 
-        # Validate public group username
-        if not re.match(r'^[a-zA-Z0-9_]{5,32}$', path):
+        # Validate public group username - Updated regex to properly handle underscores
+        if not re.match(r'^[a-zA-Z0-9_]{5,64}$', path):
             return False, "Invalid public group username format"
 
         # Check for reserved words
@@ -71,7 +72,7 @@ def is_valid_group_link(url: str) -> Tuple[bool, Optional[str]]:
             'service', 'security', 'verification'
         }
         
-        if any(word in path.lower() for word in reserved_words):
+        if path.lower() in reserved_words:  # Changed to exact match to allow partial matches in usernames
             return False, "Username contains reserved word"
 
         # Security checks
@@ -79,7 +80,7 @@ def is_valid_group_link(url: str) -> Tuple[bool, Optional[str]]:
             (r'javascript:', 'JavaScript injection attempt detected'),
             (r'data:', 'Data URI not allowed'),
             (r'<.*?>', 'HTML tags not allowed'),
-            (r'[\'";\\\{\}]', 'Special characters not allowed'),
+            (r'[\'";\{\}]', 'Special characters not allowed'),  # Removed backslash from pattern
             (r'file:', 'File protocol not allowed'),
             (r'about:', 'About protocol not allowed'),
             (r'vbscript:', 'VBScript not allowed')

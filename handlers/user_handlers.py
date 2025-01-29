@@ -17,6 +17,40 @@ from config import ADMINS
 from handlers.start_handler import handle_start
 from datetime import datetime, timedelta
 
+def create_links_keyboard(links, current_page=0, links_per_page=10):
+    """Create paginated keyboard for links list."""
+    total_links = len(links)
+    total_pages = (total_links + links_per_page - 1) // links_per_page
+    
+    start_idx = current_page * links_per_page
+    end_idx = min(start_idx + links_per_page, total_links)
+    current_links = links[start_idx:end_idx]
+    
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    
+    # Add link buttons
+    for link in current_links:
+        keyboard.add(
+            InlineKeyboardButton(
+                text=f"📌 {link.title}",
+                callback_data=f"view_link_{link.id}_{current_page}"  # Include current page
+            )
+        )
+    
+    # Add navigation buttons
+    nav_buttons = []
+    if current_page > 0:
+        nav_buttons.append(
+            InlineKeyboardButton("⬅️ Previous", callback_data=f"page_{current_page-1}")
+        )
+    if current_page < total_pages - 1:
+        nav_buttons.append(
+            InlineKeyboardButton("Next ➡️", callback_data=f"page_{current_page+1}")
+        )
+    if nav_buttons:
+        keyboard.row(*nav_buttons)
+    
+    return keyboard, total_pages
 
 def check_active_link(user_id: int, session) -> tuple[bool, str]:
     """
@@ -212,7 +246,6 @@ def register_user_handlers(bot):
     def handle_view_links(message):
         """Handle View Links button click."""
         try:
-            # Create keyboard for consistent UI
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
             keyboard.add(
                 KeyboardButton("📝 Add Your Link"),
@@ -231,20 +264,12 @@ def register_user_handlers(bot):
                     )
                     return
                 
-                # Create inline keyboard with titles as buttons
-                inline_keyboard = InlineKeyboardMarkup(row_width=1)  # One button per row
-                for link in links:
-                    inline_keyboard.add(
-                        InlineKeyboardButton(
-                            text=f"📌 {link.title}",
-                            callback_data=f"view_link_{link.id}"
-                        )
-                    )
+                # Use the new pagination system
+                inline_keyboard, total_pages = create_links_keyboard(links)
                 
-                # Send message with title buttons
                 bot.reply_to(
                     message,
-                    "📋 *Shared Links*\nClick on a title to view details:",
+                    f"📋 *Shared Links*\nClick on a title to view details:\nPage 1 of {total_pages}",
                     parse_mode="Markdown",
                     reply_markup=inline_keyboard
                 )
