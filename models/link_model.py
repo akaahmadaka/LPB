@@ -21,7 +21,7 @@ class Link(Base):
     voter_ids = Column(String(1000), default='')
     # Add clicker_ids column
     clicker_ids = Column(String(1000), default='')
-    
+
     # Relationship with User
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     user = relationship("User", back_populates="links")
@@ -36,13 +36,13 @@ class Link(Base):
         self.clicker_ids = ''
         self.upvotes = 0
         self.downvotes = 0
-        self.score = 0.0
         self.clicks = 0
+        self.calculate_score()  # Initialize the score using the calculate_score method
 
     def is_expired(self) -> bool:
         """
         Check if the link has expired.
-        
+
         Returns:
             bool: True if link has expired, False otherwise
         """
@@ -57,7 +57,7 @@ class Link(Base):
     def time_until_expiry(self) -> timedelta:
         """
         Calculate time remaining until link expires.
-        
+
         Returns:
             timedelta: Time remaining until expiry
         """
@@ -105,22 +105,22 @@ class Link(Base):
             if self.has_voter_voted(voter_id):
                 logger.info(f"Voter {voter_id} has already voted on link {self.id}")
                 return False
-                
+
             # Add voter ID
             current_voters = self._get_voter_id_list()
             current_voters.append(voter_id)
             self._save_voter_id_list(current_voters)
-            
+
             # Update vote counts
             if is_upvote:
                 self.upvotes += 1
             else:
                 self.downvotes += 1
-                
+
             self.calculate_score()
             logger.info(f"Vote added for link {self.id} by voter {voter_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error adding vote: {str(e)}")
             return False
@@ -132,25 +132,27 @@ class Link(Base):
             if self.has_user_clicked(user_id):
                 logger.info(f"User {user_id} has already clicked on link {self.id}")
                 return False
-                
+
             # Add user ID to clickers
             current_clickers = self._get_clicker_id_list()
             current_clickers.append(user_id)
             self._save_clicker_id_list(current_clickers)
-            
+
             # Increment click counter
             self.clicks += 1
             self.calculate_score()
             logger.info(f"Click added for link {self.id} by user {user_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error adding click: {str(e)}")
             return False
 
     def calculate_score(self) -> float:
-        """Calculate link score based on metrics."""
+        """Calculate link score with a base value."""
+        base_score = 2.0  # Default base score for every link
         self.score = (
+            base_score +
             (self.upvotes * 1.5) -
             (self.downvotes * 1.0) +
             (self.clicks * 0.5)
