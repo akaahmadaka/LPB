@@ -6,14 +6,13 @@ from typing import Callable, Any, Dict, Optional
 from datetime import datetime, timedelta
 from config import ADMINS
 
-
 def is_admin(user_id: int) -> bool:
     """
     Check if a user is an admin with additional logging.
-    
+
     Args:
         user_id (int): The user's Telegram ID
-        
+
     Returns:
         bool: True if user is admin, False otherwise
     """
@@ -29,39 +28,39 @@ def is_admin(user_id: int) -> bool:
 def rate_limit(seconds: int) -> Callable:
     """
     Decorator to rate limit function calls per user.
-    
+
     Args:
         seconds (int): Minimum seconds between function calls
-        
+
     Returns:
         Callable: Decorated function
     """
     def decorator(func: Callable) -> Callable:
         last_called: Dict[int, float] = {}
-        
+
         @wraps(func)
         def wrapper(message: Any, *args: Any, **kwargs: Any) -> Any:
             user_id = message.from_user.id
             current_time = time()
-            
+
             if user_id in last_called and current_time - last_called[user_id] < seconds:
                 remaining = int(seconds - (current_time - last_called[user_id]))
                 logger.warning(f"Rate limit hit for user {user_id} on {func.__name__}")
                 return f"Please wait {remaining} seconds before trying again."
-                
+
             last_called[user_id] = current_time
             return func(message, *args, **kwargs)
-            
+
         return wrapper
     return decorator
 
 def format_timestamp(timestamp: datetime) -> str:
     """
     Format a timestamp into a readable string.
-    
+
     Args:
         timestamp (datetime): Timestamp to format
-        
+
     Returns:
         str: Formatted timestamp string
     """
@@ -74,10 +73,10 @@ def format_timestamp(timestamp: datetime) -> str:
 def get_time_difference(timestamp: datetime) -> str:
     """
     Get a human-readable time difference from now.
-    
+
     Args:
         timestamp (datetime): Timestamp to compare
-        
+
     Returns:
         str: Human-readable time difference
     """
@@ -105,10 +104,10 @@ def get_time_difference(timestamp: datetime) -> str:
 def sanitize_html(text: str) -> str:
     """
     Remove HTML tags from text.
-    
+
     Args:
         text (str): Text to sanitize
-        
+
     Returns:
         str: Sanitized text
     """
@@ -121,11 +120,11 @@ def sanitize_html(text: str) -> str:
 def truncate_text(text: str, max_length: int = 100) -> str:
     """
     Truncate text to specified length.
-    
+
     Args:
         text (str): Text to truncate
         max_length (int): Maximum length
-        
+
     Returns:
         str: Truncated text
     """
@@ -140,10 +139,10 @@ def truncate_text(text: str, max_length: int = 100) -> str:
 def format_number(number: int) -> str:
     """
     Format large numbers for display.
-    
+
     Args:
         number (int): Number to format
-        
+
     Returns:
         str: Formatted number string
     """
@@ -161,10 +160,10 @@ def format_number(number: int) -> str:
 def validate_username(username: str) -> bool:
     """
     Validate Telegram username format.
-    
+
     Args:
         username (str): Username to validate
-        
+
     Returns:
         bool: True if valid, False otherwise
     """
@@ -179,10 +178,10 @@ def validate_username(username: str) -> bool:
 def escape_markdown(text: str) -> str:
     """
     Escape special characters for Markdown formatting.
-    
+
     Args:
         text (str): Text to escape
-        
+
     Returns:
         str: Escaped text
     """

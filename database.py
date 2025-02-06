@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from models.link_model import Link, Base as LinkBase
 from models.user_model import User, Base as UserBase
+from typing import Optional
 
 # Database configuration
 DATABASE_URI = 'sqlite:///links.db'
@@ -134,7 +135,31 @@ def get_all_links(session=None):
         logger.error(f"Error fetching links: {str(e)}")
         return []
 
-def get_user_by_id(user_id: int) -> User:
+def get_all_links(session=None):
+    """Fetch all links from the database ordered by score."""
+    try:
+        if session is None:
+            with get_db_session() as session:
+                return session.query(Link).order_by(Link.score.desc()).all()
+        else:
+            return session.query(Link).order_by(Link.score.desc()).all()
+    except SQLAlchemyError as e:
+        logger.error(f"Error fetching links: {str(e)}")
+        return []
+
+def get_all_links(session=None):
+    """Fetch all links from the database ordered by score."""
+    try:
+        if session is None:
+            with get_db_session() as session:
+                return session.query(Link).order_by(Link.score.desc()).all()
+        else:
+            return session.query(Link).order_by(Link.score.desc()).all()
+    except SQLAlchemyError as e:
+        logger.error(f"Error fetching links: {str(e)}")
+        return []
+
+def get_user_by_id(user_id: int) -> Optional[User]:
     """Fetch a user by their Telegram user ID."""
     with get_db_session() as session:
         try:

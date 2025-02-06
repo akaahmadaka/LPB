@@ -2,12 +2,14 @@ from telebot.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from database import get_db_session, get_link_by_id, get_all_links
 from utils.logger import logger
 from sqlalchemy.exc import SQLAlchemyError
-from utils.helpers import format_timestamp
+from utils.helpers import format_timestamp, is_admin
 from config import ADMINS
 from models.user_model import User
+from models.link_model import Link
+from typing import List, Tuple
 
 
-def escape_markdown(text):
+def escape_markdown(text: str) -> str:
     """Escape Markdown special characters."""
     special_chars = ['_', '*', '`', '[', ']']
     for char in special_chars:
@@ -15,7 +17,7 @@ def escape_markdown(text):
     return text
 
 
-def create_links_keyboard(links, current_page=0, links_per_page=10):
+def create_links_keyboard(links: List[Link], current_page: int = 0, links_per_page: int = 10) -> Tuple[InlineKeyboardMarkup, int]:
     """Create paginated keyboard for links list."""
     total_links = len(links)
     total_pages = (total_links + links_per_page - 1) // links_per_page
@@ -70,6 +72,10 @@ def create_link_detail_keyboard(link, voter_id, current_page=0):
     # Add visit and back buttons
     keyboard.add(InlineKeyboardButton("🔗 Visit Link", url=link.url))
     keyboard.add(InlineKeyboardButton("⬅️ Back to List", callback_data=f"page_{current_page}"))
+
+    # Add delete button for admins
+    if is_admin(voter_id):
+        keyboard.add(InlineKeyboardButton("🗑️ Delete Link", callback_data=f"delete_link_{link.id}_{current_page}"))
 
     return keyboard
 
@@ -285,4 +291,37 @@ def register_link_handlers(bot):
             bot.answer_callback_query(call.id, "❌ Database error!")
         except Exception as e:
             logger.error(f"Error in visit handler: {str(e)}")
+            bot.answer_callback_query(call.id, "❌ An error occurred!")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_link_'))
+    def handle_delete_link(call: CallbackQuery):
+        """Handle delete link callback when delete button is clicked."""
+        try:
+            # Extract link_id
+            parts = call.data.split('_')
+            link_id = int(parts[2])
+            user_id = call.from_user.id
+
+            if user_id not in ADMINS:
+                bot.answer_callback_query(call.id, "You are not authorized to delete links.")
+                return
+
+            with get_db_session() as session:
+                link = get_link_by_id(link_id, session)
+                if not link:
+                    bot.answer_callback_query(call.id, "❌ Link not found!")
+                    return
+
+                session.delete(link)
+                session.commit()
+
+                bot.answer_callback_query(call.id, "Link deleted successfully!")
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text="Link deleted successfully!"
+                )
+
+        except Exception as e:
+            logger.error(f"Error in delete link handler: {str(e)}")
             bot.answer_callback_query(call.id, "❌ An error occurred!")

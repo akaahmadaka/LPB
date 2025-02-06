@@ -3,13 +3,13 @@ from telebot.types import Message
 from utils.scheduler import link_scheduler
 from utils.helpers import is_admin
 from config import bot  # Import bot instance from config
-
+from database import get_db_session, get_all_links
 
 def register_admin_handlers(bot):
     """
     Register all admin-related command handlers.
     """
-    
+
     @bot.message_handler(commands=["del"])
     def handle_del_command(message):
         """
@@ -41,7 +41,7 @@ def register_admin_handlers(bot):
             # Parse command arguments
             args = message.text.split()
             if len(args) != 3:
-                bot.reply_to(message, 
+                bot.reply_to(message,
                     "⚠️ Usage: /set_cleanup <runs_per_day> <days_to_keep>\n"
                     "Example: /set_cleanup 4 3")
                 return
@@ -108,3 +108,42 @@ def register_admin_handlers(bot):
         except Exception as e:
             logger.error(f"Error in cleanup_status: {str(e)}")
             bot.reply_to(message, "❌ An error occurred while getting cleanup status")
+
+    @bot.message_handler(commands=['list_links'])
+    def handle_list_links(message: Message):
+        """Handle the /list_links command to list all links."""
+        try:
+            if not is_admin(message.from_user.id):
+                bot.reply_to(message, "You are not authorized to use this command.")
+                logger.warning(f"Unauthorized list links attempt by user {message.from_user.id}")
+                return
+
+            with get_db_session() as session:
+                links = get_all_links(session)
+                if not links:
+                    bot.reply_to(message, "No links found.")
+                    return
+
+                links_text = "\n".join(f"{link.id}: {link.title} - {link.url}" for link in links)
+                bot.reply_to(message, f"List of links:\n{links_text}")
+
+        except Exception as e:
+            logger.error(f"Error in list links command: {str(e)}")
+            bot.reply_to(message, "An error occurred. Please try again later.")
+
+    @bot.message_handler(commands=['del'])
+    def handle_del_command(message: Message):
+        """Handle the /del command to delete links."""
+        try:
+            if not is_admin(message.from_user.id):
+                bot.reply_to(message, "You are not authorized to use this command.")
+                logger.warning(f"Unauthorized delete attempt by user {message.from_user.id}")
+                return
+
+            # Prompt the admin to tap on a link to delete it
+            bot.reply_to(message, "Tap on the link you want to delete.")
+            logger.info(f"Delete command initiated by admin {message.from_user.id}")
+
+        except Exception as e:
+            logger.error(f"Error in delete command: {str(e)}")
+            bot.reply_to(message, "An error occurred. Please try again later.")
